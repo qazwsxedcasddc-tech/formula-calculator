@@ -44,7 +44,19 @@ jobs:
       run: chmod +x gradlew
 
     - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
+      run: |
+        set -o pipefail
+        ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
+        exit_code=$?
+        echo "Build exit code: $exit_code"
+        exit $exit_code
+
+    - name: Upload build log on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: build.log
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
