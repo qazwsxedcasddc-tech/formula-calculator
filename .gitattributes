@@ -1,0 +1,16 @@
+# Keep gradlew with Unix line endings
+gradlew text eol=lf
+
+# Other shell scripts should also use LF
+*.sh text eol=lf
+
+# Keep batch files with Windows line endings
+*.bat text eol=crlf
+
+# Kotlin source files
+*.kt text
+
+# Gradle files
+*.gradle text
+*.gradle.kts text
+*.properties text
