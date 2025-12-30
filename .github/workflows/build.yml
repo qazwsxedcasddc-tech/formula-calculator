@@ -30,36 +30,27 @@ jobs:
     - name: Install Build Tools
       run: sdkmanager "build-tools;34.0.0" "platforms;android-34"
 
-    - name: Cache Gradle packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
-
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Build Debug APK
+    - name: Check Gradle and project
       run: |
-        set -o pipefail
-        ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
-        exit_code=$?
-        echo "Build exit code: $exit_code"
-        exit $exit_code
+        echo "=== Gradle Version ==="
+        ./gradlew --version
+        echo "=== Project files ==="
+        ls -la app/src/main/java/com/formulacalc/
+        echo "=== Res files ==="
+        find app/src/main/res -type f | head -20
 
-    - name: Upload build log on failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-log
-        path: build.log
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug --stacktrace --no-daemon
+
+    - name: List APK
+      if: success()
+      run: find . -name "*.apk" -ls
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: formula-calculator-debug
-        path: app/build/outputs/apk/debug/app-debug.apk
+        path: app/build/outputs/apk/debug/*.apk
