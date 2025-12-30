@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Formula Calculator</string>
+    <string name="tab_calculator">Калькулятор</string>
+    <string name="tab_engineering">Инженерный</string>
+    <string name="tab_greek">Греческие</string>
+    <string name="tab_formulas">Формулы</string>
+</resources>
