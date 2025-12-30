@@ -43,15 +43,6 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: List project structure
-      run: |
-        echo "=== Project Structure ==="
-        find . -name "*.kt" | head -20
-        echo "=== App Res Structure ==="
-        ls -la app/src/main/res/ || echo "No res dir"
-        echo "=== Gradle Version ==="
-        ./gradlew --version
-
     - name: Build Debug APK
       run: ./gradlew assembleDebug --stacktrace
 
@@ -60,12 +51,3 @@ jobs:
       with:
         name: formula-calculator-debug
         path: app/build/outputs/apk/debug/app-debug.apk
-
-    - name: Upload build logs on failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs
-        path: |
-          app/build/reports/
-          app/build/outputs/logs/
