@@ -59,6 +59,7 @@ fun FormulasTab(
 /**
  * Карточка готовой формулы с поддержкой drag & drop
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FormulaCard(
     preset: PresetFormula,

@@ -75,7 +75,7 @@ internal class DragDropState {
 /**
  * CompositionLocal для состояния drag & drop
  */
-val LocalDragDropState = compositionLocalOf { DragDropState() }
+internal val LocalDragDropState = compositionLocalOf { DragDropState() }
 
 /**
  * Провайдер drag & drop контекста

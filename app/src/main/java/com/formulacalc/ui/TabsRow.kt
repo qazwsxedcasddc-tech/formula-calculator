@@ -20,7 +20,6 @@ fun TabsRow(
     ScrollableTabRow(
         selectedTabIndex = selectedTab.index,
         modifier = modifier,
-        edgePadding = TabRowDefaults.ScrollableTabRowPadding,
         containerColor = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.primary
     ) {
