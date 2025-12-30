@@ -2,8 +2,12 @@ package com.formulacalc.ui
 
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -13,6 +17,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import com.formulacalc.model.FormulaToken
 import com.formulacalc.model.PresetFormula
 import kotlin.math.roundToInt
@@ -128,15 +133,15 @@ private fun DragOverlay(
  */
 @Composable
 private fun DragTokenPreview(token: FormulaToken) {
-    androidx.compose.material3.Surface(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-        color = androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer,
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
         shadowElevation = 8.dp
     ) {
-        androidx.compose.material3.Text(
+        Text(
             text = token.displayText,
-            style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
-            modifier = androidx.compose.foundation.layout.padding(12.dp)
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(12.dp)
         )
     }
 }
@@ -146,20 +151,18 @@ private fun DragTokenPreview(token: FormulaToken) {
  */
 @Composable
 private fun DragPresetPreview(preset: PresetFormula) {
-    androidx.compose.material3.Surface(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-        color = androidx.compose.material3.MaterialTheme.colorScheme.secondaryContainer,
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
         shadowElevation = 8.dp
     ) {
-        androidx.compose.material3.Text(
+        Text(
             text = preset.toDisplayString(),
-            style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-            modifier = androidx.compose.foundation.layout.padding(12.dp)
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(12.dp)
         )
     }
 }
-
-private val dp = androidx.compose.ui.unit.dp
 
 /**
  * Модификатор для draggable элемента
