@@ -1,29 +1,30 @@
 package com.formulacalc.ui.formula
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.formulacalc.model.*
@@ -50,12 +51,22 @@ object FormulaColors {
 }
 
 /**
+ * Информация о границах элемента для hit testing
+ */
+data class ElementBounds(
+    val id: String,
+    val bounds: Rect,
+    val canBeDropTarget: Boolean = true
+)
+
+/**
  * Состояние drag для элемента
  */
 data class DragState(
     val isDragging: Boolean = false,
     val draggedElement: FormulaElement? = null,
-    val dragOffset: Offset = Offset.Zero
+    val currentPosition: Offset = Offset.Zero,
+    val startPosition: Offset = Offset.Zero
 )
 
 /**
@@ -67,7 +78,63 @@ data class HoverState(
 )
 
 /**
- * Рендеринг формулы
+ * Глобальное хранилище границ элементов
+ */
+class ElementBoundsRegistry {
+    private val bounds = mutableMapOf<String, ElementBounds>()
+
+    fun register(id: String, rect: Rect, canBeDropTarget: Boolean = true) {
+        bounds[id] = ElementBounds(id, rect, canBeDropTarget)
+    }
+
+    fun unregister(id: String) {
+        bounds.remove(id)
+    }
+
+    fun clear() {
+        bounds.clear()
+    }
+
+    /**
+     * Найти элемент и сторону drop по позиции курсора
+     */
+    fun findDropTarget(position: Offset, excludeId: String?): Pair<String, DropSide>? {
+        for ((id, elementBounds) in bounds) {
+            if (id == excludeId || !elementBounds.canBeDropTarget) continue
+
+            val rect = elementBounds.bounds
+            if (rect.contains(position)) {
+                // Определяем сторону
+                val relX = (position.x - rect.left) / rect.width
+                val relY = (position.y - rect.top) / rect.height
+
+                // Горизонтальные края (20% от краёв)
+                val isLeftEdge = relX < 0.2f
+                val isRightEdge = relX > 0.8f
+                // Вертикальные края (25% от краёв)
+                val isTopEdge = relY < 0.25f
+                val isBottomEdge = relY > 0.75f
+
+                val side = when {
+                    isLeftEdge -> DropSide.LEFT
+                    isRightEdge -> DropSide.RIGHT
+                    isTopEdge -> DropSide.TOP
+                    isBottomEdge -> DropSide.BOTTOM
+                    // По умолчанию - справа
+                    else -> DropSide.RIGHT
+                }
+
+                return id to side
+            }
+        }
+        return null
+    }
+}
+
+val LocalElementBoundsRegistry = compositionLocalOf { ElementBoundsRegistry() }
+
+/**
+ * Рендеринг формулы с drag & drop
  */
 @Composable
 fun FormulaRenderer(
@@ -75,11 +142,10 @@ fun FormulaRenderer(
     modifier: Modifier = Modifier,
     dragState: DragState = DragState(),
     hoverState: HoverState = HoverState(),
-    onDragStart: (FormulaElement) -> Unit = {},
+    onDragStart: (FormulaElement, Offset) -> Unit = { _, _ -> },
     onDragEnd: () -> Unit = {},
     onDrag: (Offset) -> Unit = {},
     onHover: (String?, DropSide?) -> Unit = { _, _ -> },
-    onDrop: (FormulaElement, String, DropSide) -> Unit = { _, _, _ -> },
     onEllipsisClick: (String) -> Unit = {},
     onVariableClick: (String) -> Unit = {},
     nestingLevel: Int = 0
@@ -105,7 +171,6 @@ fun FormulaRenderer(
                 onDragEnd = onDragEnd,
                 onDrag = onDrag,
                 onHover = onHover,
-                onDrop = onDrop,
                 onEllipsisClick = onEllipsisClick,
                 onVariableClick = onVariableClick,
                 nestingLevel = nestingLevel
@@ -123,39 +188,63 @@ private fun FormulaElementView(
     scale: Float,
     dragState: DragState,
     hoverState: HoverState,
-    onDragStart: (FormulaElement) -> Unit,
+    onDragStart: (FormulaElement, Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDrag: (Offset) -> Unit,
     onHover: (String?, DropSide?) -> Unit,
-    onDrop: (FormulaElement, String, DropSide) -> Unit,
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
     nestingLevel: Int
 ) {
     val isDraggedElement = dragState.draggedElement?.id == element.id
-    val opacity = if (isDraggedElement) 0.4f else 1f
+    val isHovered = hoverState.targetId == element.id
+
+    // Анимация пульсации для индикатора
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
 
     Box(
         modifier = Modifier.padding(horizontal = 2.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Drop indicator слева
-        if (hoverState.targetId == element.id && hoverState.side == DropSide.LEFT) {
-            DropIndicator(isVertical = true, modifier = Modifier.align(Alignment.CenterStart))
-        }
-
-        // Drop indicator сверху
-        if (hoverState.targetId == element.id && hoverState.side == DropSide.TOP) {
-            DropIndicator(isVertical = false, modifier = Modifier.align(Alignment.TopCenter))
+        // Drop indicators
+        if (isHovered && dragState.isDragging) {
+            when (hoverState.side) {
+                DropSide.LEFT -> DropIndicatorVertical(
+                    modifier = Modifier.align(Alignment.CenterStart),
+                    alpha = pulseAlpha
+                )
+                DropSide.RIGHT -> DropIndicatorVertical(
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                    alpha = pulseAlpha
+                )
+                DropSide.TOP -> DropIndicatorHorizontal(
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    alpha = pulseAlpha
+                )
+                DropSide.BOTTOM -> DropIndicatorHorizontal(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    alpha = pulseAlpha
+                )
+                null -> {}
+            }
         }
 
         when (element) {
-            is FormulaElement.Variable -> VariableView(
+            is FormulaElement.Variable -> DraggableVariableView(
                 variable = element,
                 scale = scale,
-                opacity = opacity,
+                isDragged = isDraggedElement,
                 onClick = { onVariableClick(element.id) },
-                onDragStart = { onDragStart(element) },
+                onDragStart = { offset -> onDragStart(element, offset) },
                 onDragEnd = onDragEnd,
                 onDrag = onDrag
             )
@@ -163,60 +252,48 @@ private fun FormulaElementView(
             is FormulaElement.Operator -> OperatorView(
                 operator = element,
                 scale = scale,
-                opacity = opacity
+                isDragged = isDraggedElement
             )
 
-            is FormulaElement.Equals -> EqualsView(scale = scale, opacity = opacity)
+            is FormulaElement.Equals -> EqualsView(scale = scale)
 
             is FormulaElement.Ellipsis -> EllipsisView(
-                ellipsis = element,
                 scale = scale,
-                opacity = opacity,
                 onClick = { onEllipsisClick(element.id) }
             )
 
             is FormulaElement.Fraction -> FractionView(
                 fraction = element,
                 scale = scale,
-                opacity = opacity,
+                isDragged = isDraggedElement,
                 dragState = dragState,
                 hoverState = hoverState,
                 onDragStart = onDragStart,
                 onDragEnd = onDragEnd,
                 onDrag = onDrag,
                 onHover = onHover,
-                onDrop = onDrop,
                 onEllipsisClick = onEllipsisClick,
                 onVariableClick = onVariableClick,
                 nestingLevel = nestingLevel
             )
         }
-
-        // Drop indicator справа
-        if (hoverState.targetId == element.id && hoverState.side == DropSide.RIGHT) {
-            DropIndicator(isVertical = true, modifier = Modifier.align(Alignment.CenterEnd))
-        }
-
-        // Drop indicator снизу
-        if (hoverState.targetId == element.id && hoverState.side == DropSide.BOTTOM) {
-            DropIndicator(isVertical = false, modifier = Modifier.align(Alignment.BottomCenter))
-        }
     }
 }
 
 /**
- * Переменная
+ * Переменная с поддержкой drag
  */
 @Composable
-private fun VariableView(
+private fun DraggableVariableView(
     variable: FormulaElement.Variable,
     scale: Float,
-    opacity: Float,
+    isDragged: Boolean,
     onClick: () -> Unit,
-    onDragStart: () -> Unit,
+    onDragStart: (Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDrag: (Offset) -> Unit
 ) {
+    val boundsRegistry = LocalElementBoundsRegistry.current
     val fontSize = (28 * scale).sp
     val exponentSize = (16 * scale).sp
     val paddingH = (14 * scale).dp
@@ -224,6 +301,18 @@ private fun VariableView(
 
     Row(
         modifier = Modifier
+            .onGloballyPositioned { coordinates ->
+                boundsRegistry.register(
+                    variable.id,
+                    coordinates.boundsInRoot(),
+                    canBeDropTarget = true
+                )
+            }
+            .graphicsLayer {
+                alpha = if (isDragged) 0.4f else 1f
+                scaleX = if (isDragged) 0.95f else 1f
+                scaleY = if (isDragged) 0.95f else 1f
+            }
             .clip(RoundedCornerShape(12.dp))
             .background(
                 brush = Brush.linearGradient(
@@ -231,15 +320,20 @@ private fun VariableView(
                         FormulaColors.variableGradientStart,
                         FormulaColors.variableGradientEnd
                     )
-                ),
-                alpha = opacity
+                )
             )
             .clickable { onClick() }
-            .pointerInput(Unit) {
+            .pointerInput(variable.id) {
                 detectDragGesturesAfterLongPress(
-                    onDragStart = { onDragStart() },
-                    onDragEnd = { onDragEnd() },
-                    onDragCancel = { onDragEnd() },
+                    onDragStart = { offset ->
+                        onDragStart(offset)
+                    },
+                    onDragEnd = {
+                        onDragEnd()
+                    },
+                    onDragCancel = {
+                        onDragEnd()
+                    },
                     onDrag = { change, dragAmount ->
                         change.consume()
                         onDrag(dragAmount)
@@ -271,6 +365,12 @@ private fun VariableView(
             )
         }
     }
+
+    DisposableEffect(variable.id) {
+        onDispose {
+            boundsRegistry.unregister(variable.id)
+        }
+    }
 }
 
 /**
@@ -280,14 +380,16 @@ private fun VariableView(
 private fun OperatorView(
     operator: FormulaElement.Operator,
     scale: Float,
-    opacity: Float
+    isDragged: Boolean
 ) {
     Text(
         text = operator.symbol,
-        color = FormulaColors.operatorColor.copy(alpha = opacity),
+        color = FormulaColors.operatorColor,
         fontSize = (28 * scale).sp,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier.padding(horizontal = 4.dp)
+        modifier = Modifier
+            .padding(horizontal = 4.dp)
+            .alpha(if (isDragged) 0.4f else 1f)
     )
 }
 
@@ -295,10 +397,10 @@ private fun OperatorView(
  * Знак равенства
  */
 @Composable
-private fun EqualsView(scale: Float, opacity: Float) {
+private fun EqualsView(scale: Float) {
     Text(
         text = "=",
-        color = FormulaColors.operatorColor.copy(alpha = opacity),
+        color = FormulaColors.operatorColor,
         fontSize = (28 * scale).sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier.padding(horizontal = 8.dp)
@@ -310,14 +412,12 @@ private fun EqualsView(scale: Float, opacity: Float) {
  */
 @Composable
 private fun EllipsisView(
-    ellipsis: FormulaElement.Ellipsis,
     scale: Float,
-    opacity: Float,
     onClick: () -> Unit
 ) {
     Text(
         text = "···",
-        color = FormulaColors.ellipsisText.copy(alpha = opacity),
+        color = FormulaColors.ellipsisText,
         fontSize = (24 * scale).sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier
@@ -328,8 +428,7 @@ private fun EllipsisView(
                         FormulaColors.ellipsisGradientStart,
                         FormulaColors.ellipsisGradientEnd
                     )
-                ),
-                alpha = opacity
+                )
             )
             .clickable { onClick() }
             .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -343,22 +442,33 @@ private fun EllipsisView(
 private fun FractionView(
     fraction: FormulaElement.Fraction,
     scale: Float,
-    opacity: Float,
+    isDragged: Boolean,
     dragState: DragState,
     hoverState: HoverState,
-    onDragStart: (FormulaElement) -> Unit,
+    onDragStart: (FormulaElement, Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDrag: (Offset) -> Unit,
     onHover: (String?, DropSide?) -> Unit,
-    onDrop: (FormulaElement, String, DropSide) -> Unit,
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
     nestingLevel: Int
 ) {
+    val boundsRegistry = LocalElementBoundsRegistry.current
+
     Column(
         modifier = Modifier
+            .onGloballyPositioned { coordinates ->
+                boundsRegistry.register(
+                    fraction.id,
+                    coordinates.boundsInRoot(),
+                    canBeDropTarget = true
+                )
+            }
+            .graphicsLayer {
+                alpha = if (isDragged) 0.4f else 1f
+            }
             .clip(RoundedCornerShape(12.dp))
-            .background(FormulaColors.fractionBackground.copy(alpha = opacity))
+            .background(FormulaColors.fractionBackground)
             .padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -371,7 +481,6 @@ private fun FractionView(
             onDragEnd = onDragEnd,
             onDrag = onDrag,
             onHover = onHover,
-            onDrop = onDrop,
             onEllipsisClick = onEllipsisClick,
             onVariableClick = onVariableClick,
             nestingLevel = nestingLevel + 1
@@ -390,8 +499,7 @@ private fun FractionView(
                             FormulaColors.fractionLine.copy(alpha = 0.8f)
                         )
                     ),
-                    shape = RoundedCornerShape(2.dp),
-                    alpha = opacity
+                    shape = RoundedCornerShape(2.dp)
                 )
         )
 
@@ -404,37 +512,55 @@ private fun FractionView(
             onDragEnd = onDragEnd,
             onDrag = onDrag,
             onHover = onHover,
-            onDrop = onDrop,
             onEllipsisClick = onEllipsisClick,
             onVariableClick = onVariableClick,
             nestingLevel = nestingLevel + 1
         )
     }
+
+    DisposableEffect(fraction.id) {
+        onDispose {
+            boundsRegistry.unregister(fraction.id)
+        }
+    }
 }
 
 /**
- * Индикатор места drop
+ * Вертикальный индикатор drop (зелёный - для вставки слева/справа)
  */
 @Composable
-private fun DropIndicator(
-    isVertical: Boolean,
-    modifier: Modifier = Modifier
+private fun DropIndicatorVertical(
+    modifier: Modifier = Modifier,
+    alpha: Float = 1f
 ) {
-    val color = if (isVertical) FormulaColors.dropIndicatorGreen else FormulaColors.dropIndicatorPurple
-
     Box(
         modifier = modifier
-            .then(
-                if (isVertical) {
-                    Modifier
-                        .width(4.dp)
-                        .fillMaxHeight()
-                } else {
-                    Modifier
-                        .height(4.dp)
-                        .fillMaxWidth()
-                }
+            .width(4.dp)
+            .height(40.dp)
+            .graphicsLayer { this.alpha = alpha }
+            .background(
+                FormulaColors.dropIndicatorGreen,
+                RoundedCornerShape(2.dp)
             )
-            .background(color, RoundedCornerShape(2.dp))
+    )
+}
+
+/**
+ * Горизонтальный индикатор drop (фиолетовый - для создания дроби)
+ */
+@Composable
+private fun DropIndicatorHorizontal(
+    modifier: Modifier = Modifier,
+    alpha: Float = 1f
+) {
+    Box(
+        modifier = modifier
+            .height(4.dp)
+            .width(60.dp)
+            .graphicsLayer { this.alpha = alpha }
+            .background(
+                FormulaColors.dropIndicatorPurple,
+                RoundedCornerShape(2.dp)
+            )
     )
 }

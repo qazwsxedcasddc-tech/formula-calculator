@@ -31,48 +31,50 @@ fun FormulaEditorScreen(
 ) {
     val state by viewModel.state.collectAsState()
 
-    Box(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // Заголовок
-            FormulaHeader(
-                onReset = { viewModel.reset() }
-            )
+    // Предоставляем boundsRegistry через CompositionLocal
+    CompositionLocalProvider(LocalElementBoundsRegistry provides viewModel.boundsRegistry) {
+        Box(modifier = modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Заголовок
+                FormulaHeader(
+                    onReset = { viewModel.reset() }
+                )
 
-            // Инструкции
-            FormulaInstructions()
+                // Инструкции
+                FormulaInstructions()
 
-            // Область формулы
-            FormulaArea(
-                elements = state.elements,
-                dragState = state.dragState,
-                hoverState = state.hoverState,
-                onDragStart = { viewModel.onDragStart(it) },
-                onDragEnd = { viewModel.onDragEnd() },
-                onDrag = { viewModel.onDrag(it) },
-                onHover = { targetId, side -> viewModel.onHover(targetId, side) },
-                onDrop = { _, _, _ -> }, // Обрабатывается через onDragEnd
-                onEllipsisClick = { viewModel.onEllipsisClick(it) },
-                onVariableClick = { viewModel.onVariableClick(it) }
-            )
-        }
+                // Область формулы
+                FormulaArea(
+                    elements = state.elements,
+                    dragState = state.dragState,
+                    hoverState = state.hoverState,
+                    onDragStart = { element, offset -> viewModel.onDragStart(element, offset) },
+                    onDragEnd = { viewModel.onDragEnd() },
+                    onDrag = { viewModel.onDrag(it) },
+                    onHover = { targetId, side -> viewModel.onHover(targetId, side) },
+                    onEllipsisClick = { viewModel.onEllipsisClick(it) },
+                    onVariableClick = { viewModel.onVariableClick(it) }
+                )
+            }
 
-        // Меню оператора
-        if (state.showOperatorMenu) {
-            OperatorMenu(
-                onSelect = { viewModel.selectOperator(it) },
-                onDismiss = { viewModel.dismissOperatorMenu() }
-            )
-        }
+            // Меню оператора
+            if (state.showOperatorMenu) {
+                OperatorMenu(
+                    onSelect = { viewModel.selectOperator(it) },
+                    onDismiss = { viewModel.dismissOperatorMenu() }
+                )
+            }
 
-        // Клавиатура экспоненты
-        if (state.showExponentKeyboard) {
-            ExponentKeyboard(
-                currentExponent = state.currentExponent,
-                onSave = { viewModel.saveExponent(it) },
-                onDismiss = { viewModel.dismissExponentKeyboard() }
-            )
+            // Клавиатура экспоненты
+            if (state.showExponentKeyboard) {
+                ExponentKeyboard(
+                    currentExponent = state.currentExponent,
+                    onSave = { viewModel.saveExponent(it) },
+                    onDismiss = { viewModel.dismissExponentKeyboard() }
+                )
+            }
         }
     }
 }
@@ -102,13 +104,13 @@ private fun FormulaHeader(
         Box(
             modifier = Modifier
                 .size(40.dp)
+                .shadow(8.dp, CircleShape)
                 .clip(CircleShape)
                 .background(
                     brush = Brush.linearGradient(
                         colors = listOf(Color(0xFFFF6B6B), Color(0xFFEE5A5A))
                     )
                 )
-                .shadow(8.dp, CircleShape)
                 .clickable { onReset() },
             contentAlignment = Alignment.Center
         ) {
@@ -136,8 +138,9 @@ private fun FormulaInstructions() {
             .padding(16.dp)
     ) {
         Text(
-            text = "Перетаскивайте переменные для изменения формулы",
+            text = "Удерживайте переменную для перетаскивания",
             style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
 
@@ -186,7 +189,24 @@ private fun FormulaInstructions() {
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "Клик — выбор оператора",
+                text = "Нажмите — выбор оператора",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(FormulaColors.variableGradientStart)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Нажмите на переменную — редактирование степени",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -202,11 +222,10 @@ private fun FormulaArea(
     elements: List<com.formulacalc.model.FormulaElement>,
     dragState: DragState,
     hoverState: HoverState,
-    onDragStart: (com.formulacalc.model.FormulaElement) -> Unit,
+    onDragStart: (com.formulacalc.model.FormulaElement, androidx.compose.ui.geometry.Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDrag: (androidx.compose.ui.geometry.Offset) -> Unit,
     onHover: (String?, com.formulacalc.model.DropSide?) -> Unit,
-    onDrop: (com.formulacalc.model.FormulaElement, String, com.formulacalc.model.DropSide) -> Unit,
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit
 ) {
@@ -240,7 +259,6 @@ private fun FormulaArea(
             onDragEnd = onDragEnd,
             onDrag = onDrag,
             onHover = onHover,
-            onDrop = onDrop,
             onEllipsisClick = onEllipsisClick,
             onVariableClick = onVariableClick
         )

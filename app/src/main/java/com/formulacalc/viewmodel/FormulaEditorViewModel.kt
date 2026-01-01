@@ -1,8 +1,10 @@
 package com.formulacalc.viewmodel
 
+import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.ViewModel
 import com.formulacalc.model.*
 import com.formulacalc.ui.formula.DragState
+import com.formulacalc.ui.formula.ElementBoundsRegistry
 import com.formulacalc.ui.formula.HoverState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,17 +33,22 @@ class FormulaEditorViewModel : ViewModel() {
     private val _state = MutableStateFlow(FormulaEditorState())
     val state: StateFlow<FormulaEditorState> = _state.asStateFlow()
 
+    // Registry для отслеживания границ элементов
+    val boundsRegistry = ElementBoundsRegistry()
+
     // ===== Drag & Drop =====
 
     /**
      * Начало перетаскивания элемента
      */
-    fun onDragStart(element: FormulaElement) {
+    fun onDragStart(element: FormulaElement, startOffset: Offset) {
         _state.update {
             it.copy(
                 dragState = DragState(
                     isDragging = true,
-                    draggedElement = element
+                    draggedElement = element,
+                    startPosition = startOffset,
+                    currentPosition = startOffset
                 )
             )
         }
@@ -50,12 +57,24 @@ class FormulaEditorViewModel : ViewModel() {
     /**
      * Перемещение при перетаскивании
      */
-    fun onDrag(offset: androidx.compose.ui.geometry.Offset) {
+    fun onDrag(dragAmount: Offset) {
+        val currentState = _state.value
+        if (!currentState.dragState.isDragging) return
+
+        val newPosition = currentState.dragState.currentPosition + dragAmount
+
+        // Найти элемент под курсором
+        val draggedId = currentState.dragState.draggedElement?.id
+        val dropTarget = boundsRegistry.findDropTarget(newPosition, draggedId)
+
         _state.update {
             it.copy(
-                dragState = it.dragState.copy(
-                    dragOffset = it.dragState.dragOffset + offset
-                )
+                dragState = it.dragState.copy(currentPosition = newPosition),
+                hoverState = if (dropTarget != null) {
+                    HoverState(targetId = dropTarget.first, side = dropTarget.second)
+                } else {
+                    HoverState()
+                }
             )
         }
     }
@@ -96,13 +115,11 @@ class FormulaEditorViewModel : ViewModel() {
     }
 
     /**
-     * Наведение на элемент при перетаскивании
+     * Обновление hover state вручную (если нужно)
      */
     fun onHover(targetId: String?, side: DropSide?) {
         _state.update {
-            it.copy(
-                hoverState = HoverState(targetId, side)
-            )
+            it.copy(hoverState = HoverState(targetId, side))
         }
     }
 
@@ -110,6 +127,7 @@ class FormulaEditorViewModel : ViewModel() {
      * Сброс формулы к начальному состоянию
      */
     fun reset() {
+        boundsRegistry.clear()
         _state.update {
             FormulaEditorState()
         }
@@ -159,7 +177,7 @@ class FormulaEditorViewModel : ViewModel() {
     // ===== Клавиатура экспоненты =====
 
     /**
-     * Клик на переменную — показать меню
+     * Клик на переменную — показать клавиатуру степени
      */
     fun onVariableClick(id: String) {
         val element = _state.value.elements.findById(id)
@@ -233,6 +251,7 @@ class FormulaEditorViewModel : ViewModel() {
      * Установить формулу из списка элементов
      */
     fun setFormula(elements: List<FormulaElement>) {
+        boundsRegistry.clear()
         _state.update {
             it.copy(elements = elements)
         }
