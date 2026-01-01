@@ -7,6 +7,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.formulacalc.model.FormulaToken
+import com.formulacalc.model.OperatorType
+import com.formulacalc.ui.formula.FormulaEditorScreen
+import com.formulacalc.viewmodel.FormulaEditorViewModel
 import com.formulacalc.viewmodel.FormulaViewModel
 import com.formulacalc.viewmodel.TabIndex
 
@@ -14,14 +17,15 @@ import com.formulacalc.viewmodel.TabIndex
  * Главный экран приложения.
  *
  * Структура:
- * - Зона A: FormulaDisplay (окно формулы) — ~30% экрана
+ * - Зона A: FormulaEditorScreen (редактор формул с drag & drop) — ~40% экрана
  * - Зона B: TabsRow (вкладки режимов)
  * - Зона C: InputPanel (панель ввода) — остальное
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
-    viewModel: FormulaViewModel = viewModel()
+    viewModel: FormulaViewModel = viewModel(),
+    editorViewModel: FormulaEditorViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -35,26 +39,12 @@ fun MainScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                // ===== Зона A: Окно формулы =====
-                FormulaDisplay(
-                    formula = uiState.formula,
-                    result = uiState.result,
-                    error = uiState.error,
-                    isDragOver = uiState.isDragOver,
-                    isResultDisplayed = uiState.isResultDisplayed,
-                    onCursorPositionChanged = { viewModel.setCursorPosition(it) },
-                    onDragOver = { viewModel.setDragOver(it) },
-                    onTokenDropped = { token, position -> viewModel.onTokenDropped(token, position) },
-                    onDrop = { dragData ->
-                        when (dragData) {
-                            is DragData.Token -> viewModel.onTokenDropped(dragData.token, null)
-                            is DragData.Preset -> viewModel.onPresetDropped(dragData.preset)
-                        }
-                    },
+                // ===== Зона A: Редактор формул =====
+                FormulaEditorScreen(
+                    viewModel = editorViewModel,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.3f)
-                        .padding(16.dp)
+                        .weight(0.45f)
                 )
 
                 // ===== Зона B: Вкладки режимов =====
@@ -67,16 +57,44 @@ fun MainScreen(
                 // ===== Зона C: Панель ввода =====
                 InputPanel(
                     selectedTab = uiState.selectedTab,
-                    onTokenClick = { viewModel.insertToken(it) },
+                    onTokenClick = { token ->
+                        // Добавляем элемент в редактор формул
+                        when (token) {
+                            is FormulaToken.Variable -> editorViewModel.addVariable(token.name)
+                            is FormulaToken.Subscript -> editorViewModel.addVariable(token.base, token.displayText)
+                            is FormulaToken.Superscript -> editorViewModel.addVariable(token.base, token.displayText)
+                            is FormulaToken.Operator -> {
+                                val opType = when (token.symbol) {
+                                    "+" -> OperatorType.PLUS
+                                    "−" -> OperatorType.MINUS
+                                    "×" -> OperatorType.MULTIPLY
+                                    "÷" -> OperatorType.DIVIDE
+                                    else -> null
+                                }
+                                opType?.let { editorViewModel.addOperator(it) }
+                            }
+                            is FormulaToken.Parenthesis -> {
+                                val opType = if (token.isOpen) OperatorType.OPEN_PAREN else OperatorType.CLOSE_PAREN
+                                editorViewModel.addOperator(opType)
+                            }
+                            else -> {
+                                // Для остальных токенов используем старую логику
+                                viewModel.insertToken(token)
+                            }
+                        }
+                    },
                     onDigitClick = { viewModel.insertDigit(it) },
                     onDecimalClick = { viewModel.insertDecimalPoint() },
-                    onClearClick = { viewModel.clear() },
+                    onClearClick = {
+                        viewModel.clear()
+                        editorViewModel.reset()
+                    },
                     onBackspaceClick = { viewModel.deleteToken() },
                     onEqualsClick = { viewModel.evaluate() },
                     onPresetClick = { viewModel.setPresetFormula(it) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.7f)
+                        .weight(0.55f)
                 )
             }
         }
