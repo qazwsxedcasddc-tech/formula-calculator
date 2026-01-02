@@ -3,7 +3,9 @@ package com.formulacalc.ui.formula
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -37,15 +39,40 @@ fun FormulaEditorScreen(
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-                // Заголовок
-                FormulaHeader(
-                    onReset = { viewModel.reset() }
-                )
+                // Компактный заголовок с кнопкой сброса
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Формула",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
 
-                // Инструкции
-                FormulaInstructions()
+                    // Кнопка сброса
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFEE5A5A))
+                            .clickable { viewModel.reset() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "✕",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
 
-                // Область формулы
+                // Область формулы — занимает всё доступное место
                 FormulaArea(
                     elements = state.elements,
                     dragState = state.dragState,
@@ -54,8 +81,65 @@ fun FormulaEditorScreen(
                     onDragEnd = { viewModel.onDragEnd() },
                     onDragMove = { viewModel.onDragMove(it) },
                     onEllipsisClick = { viewModel.onEllipsisClick(it) },
-                    onVariableClick = { viewModel.onVariableClick(it) }
+                    onVariableClick = { viewModel.onVariableClick(it) },
+                    modifier = Modifier.weight(1f)
                 )
+
+                // Компактные подсказки внизу
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Зелёная линия
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height(12.dp)
+                                .background(FormulaColors.dropIndicatorGreen, RoundedCornerShape(1.dp))
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "рядом",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Фиолетовая линия
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .width(12.dp)
+                                .height(3.dp)
+                                .background(FormulaColors.dropIndicatorPurple, RoundedCornerShape(1.dp))
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "дробь",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Tap
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "···",
+                            color = FormulaColors.ellipsisText,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "оператор",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
 
             // Меню оператора
@@ -79,141 +163,6 @@ fun FormulaEditorScreen(
 }
 
 /**
- * Заголовок редактора
- */
-@Composable
-private fun FormulaHeader(
-    onReset: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "Редактор формул",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-
-        // Кнопка сброса
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .shadow(8.dp, CircleShape)
-                .clip(CircleShape)
-                .background(
-                    brush = Brush.linearGradient(
-                        colors = listOf(Color(0xFFFF6B6B), Color(0xFFEE5A5A))
-                    )
-                )
-                .clickable { onReset() },
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "✕",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-/**
- * Инструкции по использованию
- */
-@Composable
-private fun FormulaInstructions() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "Удерживайте переменную для перетаскивания",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .width(4.dp)
-                    .height(16.dp)
-                    .background(FormulaColors.dropIndicatorGreen, RoundedCornerShape(2.dp))
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Зелёная линия — вставка рядом",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .width(16.dp)
-                    .height(4.dp)
-                    .background(FormulaColors.dropIndicatorPurple, RoundedCornerShape(2.dp))
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Фиолетовая линия — создание дроби",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "···",
-                color = FormulaColors.ellipsisText,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Нажмите — выбор оператора",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(16.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(FormulaColors.variableGradientStart)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Нажмите на переменную — редактирование степени",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-/**
  * Область с формулой
  */
 @Composable
@@ -225,39 +174,43 @@ private fun FormulaArea(
     onDragEnd: () -> Unit,
     onDragMove: (androidx.compose.ui.geometry.Offset) -> Unit,
     onEllipsisClick: (String) -> Unit,
-    onVariableClick: (String) -> Unit
+    onVariableClick: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val scrollState = rememberScrollState()
+
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(16.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
             .border(
-                width = 2.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                shape = RoundedCornerShape(16.dp)
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(12.dp)
             )
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.surface,
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    )
-                )
-            )
-            .padding(24.dp)
-            .heightIn(min = 120.dp),
+            .background(MaterialTheme.colorScheme.surface)
+            .horizontalScroll(scrollState)
+            .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
-        FormulaRenderer(
-            elements = elements,
-            dragState = dragState,
-            hoverState = hoverState,
-            onDragStart = onDragStart,
-            onDragEnd = onDragEnd,
-            onDragMove = onDragMove,
-            onEllipsisClick = onEllipsisClick,
-            onVariableClick = onVariableClick
-        )
+        if (elements.isEmpty()) {
+            Text(
+                text = "Формула пуста",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            )
+        } else {
+            FormulaRenderer(
+                elements = elements,
+                dragState = dragState,
+                hoverState = hoverState,
+                onDragStart = onDragStart,
+                onDragEnd = onDragEnd,
+                onDragMove = onDragMove,
+                onEllipsisClick = onEllipsisClick,
+                onVariableClick = onVariableClick
+            )
+        }
     }
 }
