@@ -374,6 +374,20 @@ fun List<FormulaElement>.replaceEllipsis(targetId: String, operatorType: Operato
 // ===== Конвертация PresetFormula в FormulaElement =====
 
 /**
+ * Нормализует unicode-символы степени в обычные символы.
+ * ² → 2, ³ → 3, и т.д.
+ */
+private fun normalizeExponent(exp: String): String {
+    val unicodeToNormal = mapOf(
+        '⁰' to '0', '¹' to '1', '²' to '2', '³' to '3', '⁴' to '4',
+        '⁵' to '5', '⁶' to '6', '⁷' to '7', '⁸' to '8', '⁹' to '9',
+        '⁺' to '+', '⁻' to '-', '⁼' to '=', '⁽' to '(', '⁾' to ')',
+        'ⁿ' to 'n', 'ⁱ' to 'i'
+    )
+    return exp.map { unicodeToNormal[it] ?: it }.joinToString("")
+}
+
+/**
  * Конвертирует PresetFormula в список FormulaElement.
  * Возвращает только ПРАВУЮ часть формулы (после знака =).
  *
@@ -442,7 +456,9 @@ private fun convertSimpleTokens(tokens: List<FormulaToken>): List<FormulaElement
             }
             is FormulaToken.Superscript -> {
                 // c² → переменная с экспонентой
-                createVariable(token.base, token.base, Exponent.Simple(token.superscript))
+                // Нормализуем unicode степени в обычные цифры
+                val normalizedExponent = normalizeExponent(token.superscript)
+                createVariable(token.base, token.base, Exponent.Simple(normalizedExponent))
             }
             is FormulaToken.Operator -> {
                 when (token.symbol) {

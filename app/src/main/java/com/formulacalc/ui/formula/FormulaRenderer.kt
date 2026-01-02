@@ -500,19 +500,15 @@ private fun FractionView(
             nestingLevel = nestingLevel + 1
         )
 
-        // Линия дроби
+        // Линия дроби — используем widthIn для гарантированной минимальной ширины
         Box(
             modifier = Modifier
                 .padding(vertical = 4.dp)
                 .height(3.dp)
+                .widthIn(min = 60.dp)
                 .fillMaxWidth()
                 .background(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(
-                            FormulaColors.fractionLine,
-                            FormulaColors.fractionLine.copy(alpha = 0.8f)
-                        )
-                    ),
+                    color = FormulaColors.fractionLine,
                     shape = RoundedCornerShape(2.dp)
                 )
         )
