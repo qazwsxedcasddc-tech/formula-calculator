@@ -43,6 +43,9 @@ internal class DragDropState {
     var dropTargetPosition by mutableStateOf(Offset.Zero)
     var dropTargetSize by mutableStateOf(IntSize.Zero)
 
+    // Callback для drop
+    var onDropCallback: ((DragData) -> Unit)? = null
+
     fun startDrag(data: DragData, startPosition: Offset) {
         isDragging = true
         dragData = data
@@ -56,6 +59,13 @@ internal class DragDropState {
 
     fun endDrag(): DragData? {
         val data = dragData
+        val wasOverTarget = isOverDropTargetInternal()
+
+        // Если мы над drop target и есть data — вызываем callback
+        if (wasOverTarget && data != null) {
+            onDropCallback?.invoke(data)
+        }
+
         isDragging = false
         dragData = null
         dragOffset = Offset.Zero
@@ -64,6 +74,10 @@ internal class DragDropState {
 
     fun isOverDropTarget(): Boolean {
         if (!isDragging) return false
+        return isOverDropTargetInternal()
+    }
+
+    private fun isOverDropTargetInternal(): Boolean {
         val currentPos = dragPosition + dragOffset
         return currentPos.x >= dropTargetPosition.x &&
                 currentPos.x <= dropTargetPosition.x + dropTargetSize.width &&
@@ -242,16 +256,17 @@ fun Modifier.dropTarget(
 ): Modifier {
     val state = LocalDragDropState.current
 
-    LaunchedEffect(state.isDragging, state.dragOffset) {
-        onDragOver(state.isOverDropTarget())
+    // Регистрируем callback для drop
+    DisposableEffect(onDrop) {
+        state.onDropCallback = onDrop
+        onDispose {
+            state.onDropCallback = null
+        }
     }
 
-    LaunchedEffect(state.isDragging) {
-        if (!state.isDragging && state.dragData != null) {
-            if (state.isOverDropTarget()) {
-                state.dragData?.let { onDrop(it) }
-            }
-        }
+    // Обновляем состояние drag over
+    LaunchedEffect(state.isDragging, state.dragOffset) {
+        onDragOver(state.isOverDropTarget())
     }
 
     return this.onGloballyPositioned { coordinates ->

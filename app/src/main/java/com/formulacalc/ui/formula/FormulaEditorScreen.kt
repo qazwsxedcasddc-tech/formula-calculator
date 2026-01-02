@@ -1,5 +1,6 @@
 package com.formulacalc.ui.formula
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.formulacalc.model.PresetFormula
+import com.formulacalc.ui.DragData
+import com.formulacalc.ui.dropTarget
 import com.formulacalc.viewmodel.FormulaEditorViewModel
 
 /**
@@ -82,6 +86,7 @@ fun FormulaEditorScreen(
                     onDragMove = { viewModel.onDragMove(it) },
                     onEllipsisClick = { viewModel.onEllipsisClick(it) },
                     onVariableClick = { viewModel.onVariableClick(it) },
+                    onPresetDrop = { preset -> viewModel.dropPreset(preset) },
                     modifier = Modifier.weight(1f)
                 )
 
@@ -163,7 +168,7 @@ fun FormulaEditorScreen(
 }
 
 /**
- * Область с формулой
+ * Область с формулой — поддерживает drop для preset формул
  */
 @Composable
 private fun FormulaArea(
@@ -175,9 +180,23 @@ private fun FormulaArea(
     onDragMove: (androidx.compose.ui.geometry.Offset) -> Unit,
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
+    onPresetDrop: (PresetFormula) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    var isDragOver by remember { mutableStateOf(false) }
+
+    // Анимация цвета границы при drag over
+    val borderColor by animateColorAsState(
+        targetValue = if (isDragOver) {
+            FormulaColors.dropIndicatorGreen
+        } else {
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+        },
+        label = "borderColor"
+    )
+
+    val borderWidth = if (isDragOver) 2.dp else 1.dp
 
     Box(
         modifier = modifier
@@ -185,20 +204,39 @@ private fun FormulaArea(
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .clip(RoundedCornerShape(12.dp))
             .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                width = borderWidth,
+                color = borderColor,
                 shape = RoundedCornerShape(12.dp)
             )
-            .background(MaterialTheme.colorScheme.surface)
+            .background(
+                if (isDragOver) {
+                    FormulaColors.dropIndicatorGreen.copy(alpha = 0.1f)
+                } else {
+                    MaterialTheme.colorScheme.surface
+                }
+            )
+            .dropTarget(
+                onDragOver = { isDragOver = it },
+                onDrop = { data ->
+                    when (data) {
+                        is DragData.Preset -> onPresetDrop(data.preset)
+                        else -> { /* игнорируем другие типы */ }
+                    }
+                }
+            )
             .horizontalScroll(scrollState)
             .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
         if (elements.isEmpty()) {
             Text(
-                text = "Формула пуста",
+                text = if (isDragOver) "Отпустите формулу здесь" else "Перетащите формулу сюда",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                color = if (isDragOver) {
+                    FormulaColors.dropIndicatorGreen
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                }
             )
         } else {
             FormulaRenderer(

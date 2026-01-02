@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import android.util.Log
 
 /**
  * Состояние редактора формул
@@ -242,6 +243,47 @@ class FormulaEditorViewModel : ViewModel() {
         boundsRegistry.clear()
         _state.update {
             it.copy(elements = elements)
+        }
+    }
+
+    // ===== Drop preset formula =====
+
+    /**
+     * Обработка drop формулы из нижней панели.
+     * Конвертирует PresetFormula в элементы и добавляет к текущей формуле.
+     *
+     * - Берёт только правую часть формулы (после =)
+     * - Автоматически добавляет ellipsis между существующими элементами и новыми
+     * - Деление отображается как дробь
+     */
+    fun dropPreset(preset: PresetFormula) {
+        Log.d("FormulaEditor", "dropPreset called: ${preset.name}")
+
+        // Конвертируем preset в элементы (только правая часть)
+        val newElements = preset.toFormulaElements()
+        Log.d("FormulaEditor", "Converted to ${newElements.size} elements")
+
+        _state.update { currentState ->
+            // Добавляем к существующей формуле с автоматическим ellipsis
+            val updatedElements = currentState.elements.appendElements(newElements)
+            Log.d("FormulaEditor", "Total elements now: ${updatedElements.size}")
+
+            currentState.copy(elements = updatedElements)
+        }
+    }
+
+    /**
+     * Очистить формулу и установить пустую с "F ="
+     */
+    fun clearAndSetEmpty() {
+        boundsRegistry.clear()
+        _state.update {
+            it.copy(
+                elements = listOf(
+                    createVariable("F"),
+                    createEquals()
+                )
+            )
         }
     }
 }

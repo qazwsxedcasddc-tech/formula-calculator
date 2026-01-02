@@ -36,9 +36,23 @@ fun createFraction(
     )
 }
 
-// ===== Начальная формула гравитации =====
+// ===== Начальная пустая формула =====
 
+/**
+ * Начальная пустая формула: просто "F ="
+ * Пользователь перетаскивает формулы из нижней панели
+ */
 fun getInitialGravityFormula(): List<FormulaElement> {
+    return listOf(
+        createVariable("F"),
+        createEquals()
+    )
+}
+
+/**
+ * Пример формулы гравитации (для тестирования)
+ */
+fun getGravityFormulaExample(): List<FormulaElement> {
     return listOf(
         createVariable("F"),
         createEquals(),
@@ -354,5 +368,153 @@ fun List<FormulaElement>.replaceEllipsis(targetId: String, operatorType: Operato
             }
             else -> element
         }
+    }
+}
+
+// ===== Конвертация PresetFormula в FormulaElement =====
+
+/**
+ * Конвертирует PresetFormula в список FormulaElement.
+ * Возвращает только ПРАВУЮ часть формулы (после знака =).
+ *
+ * Например: "F = m × a" → [m, ×, a]
+ *
+ * Также обрабатывает деление как дробь (визуальную).
+ */
+fun PresetFormula.toFormulaElements(): List<FormulaElement> {
+    // Находим индекс знака "="
+    val equalsIndex = tokens.indexOfFirst {
+        it is FormulaToken.Operator && it.symbol == "="
+    }
+
+    // Берём только правую часть (после =)
+    val rightSideTokens = if (equalsIndex >= 0 && equalsIndex < tokens.lastIndex) {
+        tokens.subList(equalsIndex + 1, tokens.size)
+    } else {
+        tokens
+    }
+
+    // Конвертируем токены в элементы
+    return convertTokensToElements(rightSideTokens)
+}
+
+/**
+ * Конвертирует список токенов в список элементов формулы.
+ * Обрабатывает деление как дробь.
+ */
+private fun convertTokensToElements(tokens: List<FormulaToken>): List<FormulaElement> {
+    // Сначала проверяем, есть ли деление — если да, создаём дробь
+    val divideIndex = tokens.indexOfFirst {
+        it is FormulaToken.Operator && it.symbol == "÷"
+    }
+
+    if (divideIndex > 0 && divideIndex < tokens.lastIndex) {
+        // Есть деление — создаём дробь
+        val numeratorTokens = tokens.subList(0, divideIndex)
+        val denominatorTokens = tokens.subList(divideIndex + 1, tokens.size)
+
+        return listOf(
+            createFraction(
+                numerator = convertSimpleTokens(numeratorTokens),
+                denominator = convertSimpleTokens(denominatorTokens)
+            )
+        )
+    }
+
+    // Нет деления — просто конвертируем токены
+    return convertSimpleTokens(tokens)
+}
+
+/**
+ * Конвертирует простые токены (без создания дробей).
+ */
+private fun convertSimpleTokens(tokens: List<FormulaToken>): List<FormulaElement> {
+    val result = mutableListOf<FormulaElement>()
+
+    for (token in tokens) {
+        val element = when (token) {
+            is FormulaToken.Variable -> {
+                createVariable(token.name)
+            }
+            is FormulaToken.Subscript -> {
+                // m₁ → переменная с displayValue
+                createVariable(token.base, token.displayText)
+            }
+            is FormulaToken.Superscript -> {
+                // c² → переменная с экспонентой
+                createVariable(token.base, token.base, Exponent.Simple(token.superscript))
+            }
+            is FormulaToken.Operator -> {
+                when (token.symbol) {
+                    "+" -> createOperator(OperatorType.PLUS)
+                    "−" -> createOperator(OperatorType.MINUS)
+                    "×" -> createOperator(OperatorType.MULTIPLY)
+                    "÷" -> createOperator(OperatorType.DIVIDE)
+                    "(" -> createOperator(OperatorType.OPEN_PAREN)
+                    ")" -> createOperator(OperatorType.CLOSE_PAREN)
+                    else -> null
+                }
+            }
+            is FormulaToken.Parenthesis -> {
+                if (token.isOpen) createOperator(OperatorType.OPEN_PAREN)
+                else createOperator(OperatorType.CLOSE_PAREN)
+            }
+            is FormulaToken.Number -> {
+                createVariable(token.value)
+            }
+            is FormulaToken.Function -> {
+                createVariable(token.displayText)
+            }
+        }
+
+        if (element != null) {
+            result.add(element)
+        }
+    }
+
+    return result
+}
+
+// ===== Добавление элементов к существующей формуле =====
+
+/**
+ * Добавляет новые элементы к существующей формуле.
+ * Автоматически вставляет ellipsis между формулами.
+ *
+ * Если формула была пустая или содержала только "F =" — заменяем всё.
+ * Если уже есть элементы — добавляем ellipsis и новые элементы.
+ */
+fun List<FormulaElement>.appendElements(newElements: List<FormulaElement>): List<FormulaElement> {
+    if (newElements.isEmpty()) return this
+
+    // Находим индекс знака "="
+    val equalsIndex = this.indexOfFirst { it is FormulaElement.Equals }
+
+    // Берём часть до = (включительно) и часть после =
+    val prefix = if (equalsIndex >= 0) {
+        this.subList(0, equalsIndex + 1)
+    } else {
+        emptyList()
+    }
+
+    val existingRightSide = if (equalsIndex >= 0 && equalsIndex < this.lastIndex) {
+        this.subList(equalsIndex + 1, this.size)
+    } else if (equalsIndex < 0) {
+        this
+    } else {
+        emptyList()
+    }
+
+    // Проверяем, есть ли значимые элементы в правой части
+    val hasContent = existingRightSide.any {
+        it is FormulaElement.Variable || it is FormulaElement.Fraction
+    }
+
+    return if (hasContent) {
+        // Уже есть элементы — добавляем через ellipsis
+        (prefix + existingRightSide + newElements).normalize()
+    } else {
+        // Правая часть пуста — просто добавляем
+        (prefix + newElements).normalize()
     }
 }
