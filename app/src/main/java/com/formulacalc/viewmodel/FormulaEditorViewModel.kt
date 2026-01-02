@@ -41,35 +41,32 @@ class FormulaEditorViewModel : ViewModel() {
     /**
      * Начало перетаскивания элемента
      */
-    fun onDragStart(element: FormulaElement, startOffset: Offset) {
+    fun onDragStart(element: FormulaElement, fingerPosition: Offset) {
         _state.update {
             it.copy(
                 dragState = DragState(
                     isDragging = true,
                     draggedElement = element,
-                    startPosition = startOffset,
-                    currentPosition = startOffset
+                    fingerPosition = fingerPosition
                 )
             )
         }
     }
 
     /**
-     * Перемещение при перетаскивании
+     * Перемещение пальца — получаем абсолютную позицию
      */
-    fun onDrag(dragAmount: Offset) {
+    fun onDragMove(fingerPosition: Offset) {
         val currentState = _state.value
         if (!currentState.dragState.isDragging) return
 
-        val newPosition = currentState.dragState.currentPosition + dragAmount
-
         // Найти элемент под курсором
         val draggedId = currentState.dragState.draggedElement?.id
-        val dropTarget = boundsRegistry.findDropTarget(newPosition, draggedId)
+        val dropTarget = boundsRegistry.findDropTarget(fingerPosition, draggedId)
 
         _state.update {
             it.copy(
-                dragState = it.dragState.copy(currentPosition = newPosition),
+                dragState = it.dragState.copy(fingerPosition = fingerPosition),
                 hoverState = if (dropTarget != null) {
                     HoverState(targetId = dropTarget.first, side = dropTarget.second)
                 } else {
@@ -92,7 +89,7 @@ class FormulaEditorViewModel : ViewModel() {
             // Удаляем элемент из старой позиции
             val withoutDragged = currentState.elements.removeById(draggedElement.id)
 
-            // Вставляем в новую позицию
+            // Вставляем в новую позицию (клонируем чтобы получить новый ID)
             val clonedElement = draggedElement.clone()
             val newElements = withoutDragged.insertAt(clonedElement, targetId, side)
 
@@ -111,15 +108,6 @@ class FormulaEditorViewModel : ViewModel() {
                     hoverState = HoverState()
                 )
             }
-        }
-    }
-
-    /**
-     * Обновление hover state вручную (если нужно)
-     */
-    fun onHover(targetId: String?, side: DropSide?) {
-        _state.update {
-            it.copy(hoverState = HoverState(targetId, side))
         }
     }
 

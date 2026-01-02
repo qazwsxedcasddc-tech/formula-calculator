@@ -3,8 +3,9 @@ package com.formulacalc.ui.formula
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -13,18 +14,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.formulacalc.model.*
@@ -65,8 +69,7 @@ data class ElementBounds(
 data class DragState(
     val isDragging: Boolean = false,
     val draggedElement: FormulaElement? = null,
-    val currentPosition: Offset = Offset.Zero,
-    val startPosition: Offset = Offset.Zero
+    val fingerPosition: Offset = Offset.Zero // Абсолютная позиция пальца на экране
 )
 
 /**
@@ -81,7 +84,7 @@ data class HoverState(
  * Глобальное хранилище границ элементов
  */
 class ElementBoundsRegistry {
-    private val bounds = mutableMapOf<String, ElementBounds>()
+    private val bounds = mutableStateMapOf<String, ElementBounds>()
 
     fun register(id: String, rect: Rect, canBeDropTarget: Boolean = true) {
         bounds[id] = ElementBounds(id, rect, canBeDropTarget)
@@ -96,31 +99,28 @@ class ElementBoundsRegistry {
     }
 
     /**
-     * Найти элемент и сторону drop по позиции курсора
+     * Найти элемент и сторону drop по абсолютной позиции пальца
      */
-    fun findDropTarget(position: Offset, excludeId: String?): Pair<String, DropSide>? {
+    fun findDropTarget(fingerPosition: Offset, excludeId: String?): Pair<String, DropSide>? {
         for ((id, elementBounds) in bounds) {
             if (id == excludeId || !elementBounds.canBeDropTarget) continue
 
             val rect = elementBounds.bounds
-            if (rect.contains(position)) {
-                // Определяем сторону
-                val relX = (position.x - rect.left) / rect.width
-                val relY = (position.y - rect.top) / rect.height
+            if (rect.contains(fingerPosition)) {
+                // Вычисляем относительную позицию внутри элемента
+                val relX = (fingerPosition.x - rect.left) / rect.width
+                val relY = (fingerPosition.y - rect.top) / rect.height
 
-                // Горизонтальные края (20% от краёв)
-                val isLeftEdge = relX < 0.2f
-                val isRightEdge = relX > 0.8f
-                // Вертикальные края (25% от краёв)
-                val isTopEdge = relY < 0.25f
-                val isBottomEdge = relY > 0.75f
+                // Расстояние от центра (нормализованное)
+                val distFromCenterX = kotlin.math.abs(relX - 0.5f) * 2 // 0..1
+                val distFromCenterY = kotlin.math.abs(relY - 0.5f) * 2 // 0..1
 
+                // Определяем направление как в веб-версии
                 val side = when {
-                    isLeftEdge -> DropSide.LEFT
-                    isRightEdge -> DropSide.RIGHT
-                    isTopEdge -> DropSide.TOP
-                    isBottomEdge -> DropSide.BOTTOM
-                    // По умолчанию - справа
+                    // Если ближе к верху/низу чем к бокам
+                    distFromCenterY > distFromCenterX && relY < 0.5f -> DropSide.TOP
+                    distFromCenterY > distFromCenterX && relY >= 0.5f -> DropSide.BOTTOM
+                    relX < 0.5f -> DropSide.LEFT
                     else -> DropSide.RIGHT
                 }
 
@@ -144,8 +144,7 @@ fun FormulaRenderer(
     hoverState: HoverState = HoverState(),
     onDragStart: (FormulaElement, Offset) -> Unit = { _, _ -> },
     onDragEnd: () -> Unit = {},
-    onDrag: (Offset) -> Unit = {},
-    onHover: (String?, DropSide?) -> Unit = { _, _ -> },
+    onDragMove: (Offset) -> Unit = {}, // Теперь передаём абсолютную позицию
     onEllipsisClick: (String) -> Unit = {},
     onVariableClick: (String) -> Unit = {},
     nestingLevel: Int = 0
@@ -169,8 +168,7 @@ fun FormulaRenderer(
                 hoverState = hoverState,
                 onDragStart = onDragStart,
                 onDragEnd = onDragEnd,
-                onDrag = onDrag,
-                onHover = onHover,
+                onDragMove = onDragMove,
                 onEllipsisClick = onEllipsisClick,
                 onVariableClick = onVariableClick,
                 nestingLevel = nestingLevel
@@ -190,8 +188,7 @@ private fun FormulaElementView(
     hoverState: HoverState,
     onDragStart: (FormulaElement, Offset) -> Unit,
     onDragEnd: () -> Unit,
-    onDrag: (Offset) -> Unit,
-    onHover: (String?, DropSide?) -> Unit,
+    onDragMove: (Offset) -> Unit,
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
     nestingLevel: Int
@@ -215,23 +212,31 @@ private fun FormulaElementView(
         modifier = Modifier.padding(horizontal = 2.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Drop indicators
-        if (isHovered && dragState.isDragging) {
+        // Drop indicators — показываем только когда идёт drag И hover на этом элементе
+        if (isHovered && dragState.isDragging && !isDraggedElement) {
             when (hoverState.side) {
                 DropSide.LEFT -> DropIndicatorVertical(
-                    modifier = Modifier.align(Alignment.CenterStart),
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = (-6).dp),
                     alpha = pulseAlpha
                 )
                 DropSide.RIGHT -> DropIndicatorVertical(
-                    modifier = Modifier.align(Alignment.CenterEnd),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .offset(x = 6.dp),
                     alpha = pulseAlpha
                 )
                 DropSide.TOP -> DropIndicatorHorizontal(
-                    modifier = Modifier.align(Alignment.TopCenter),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-6).dp),
                     alpha = pulseAlpha
                 )
                 DropSide.BOTTOM -> DropIndicatorHorizontal(
-                    modifier = Modifier.align(Alignment.BottomCenter),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .offset(y = 6.dp),
                     alpha = pulseAlpha
                 )
                 null -> {}
@@ -246,13 +251,12 @@ private fun FormulaElementView(
                 onClick = { onVariableClick(element.id) },
                 onDragStart = { offset -> onDragStart(element, offset) },
                 onDragEnd = onDragEnd,
-                onDrag = onDrag
+                onDragMove = onDragMove
             )
 
             is FormulaElement.Operator -> OperatorView(
                 operator = element,
-                scale = scale,
-                isDragged = isDraggedElement
+                scale = scale
             )
 
             is FormulaElement.Equals -> EqualsView(scale = scale)
@@ -270,8 +274,7 @@ private fun FormulaElementView(
                 hoverState = hoverState,
                 onDragStart = onDragStart,
                 onDragEnd = onDragEnd,
-                onDrag = onDrag,
-                onHover = onHover,
+                onDragMove = onDragMove,
                 onEllipsisClick = onEllipsisClick,
                 onVariableClick = onVariableClick,
                 nestingLevel = nestingLevel
@@ -281,7 +284,7 @@ private fun FormulaElementView(
 }
 
 /**
- * Переменная с поддержкой drag
+ * Переменная с поддержкой drag (long press + move)
  */
 @Composable
 private fun DraggableVariableView(
@@ -291,7 +294,7 @@ private fun DraggableVariableView(
     onClick: () -> Unit,
     onDragStart: (Offset) -> Unit,
     onDragEnd: () -> Unit,
-    onDrag: (Offset) -> Unit
+    onDragMove: (Offset) -> Unit
 ) {
     val boundsRegistry = LocalElementBoundsRegistry.current
     val fontSize = (28 * scale).sp
@@ -299,14 +302,15 @@ private fun DraggableVariableView(
     val paddingH = (14 * scale).dp
     val paddingV = (8 * scale).dp
 
+    // Позиция элемента на экране
+    var elementPosition by remember { mutableStateOf(Offset.Zero) }
+
     Row(
         modifier = Modifier
             .onGloballyPositioned { coordinates ->
-                boundsRegistry.register(
-                    variable.id,
-                    coordinates.boundsInRoot(),
-                    canBeDropTarget = true
-                )
+                val bounds = coordinates.boundsInRoot()
+                boundsRegistry.register(variable.id, bounds, canBeDropTarget = true)
+                elementPosition = Offset(bounds.left, bounds.top)
             }
             .graphicsLayer {
                 alpha = if (isDragged) 0.4f else 1f
@@ -322,23 +326,38 @@ private fun DraggableVariableView(
                     )
                 )
             )
-            .clickable { onClick() }
             .pointerInput(variable.id) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = { offset ->
-                        onDragStart(offset)
-                    },
-                    onDragEnd = {
-                        onDragEnd()
-                    },
-                    onDragCancel = {
-                        onDragEnd()
-                    },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        onDrag(dragAmount)
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val longPress = awaitLongPressOrCancellation(down.id)
+
+                    if (longPress != null) {
+                        // Началось long press — начинаем drag
+                        // Вычисляем абсолютную позицию пальца
+                        val absolutePosition = elementPosition + longPress.position
+                        onDragStart(absolutePosition)
+
+                        // Отслеживаем движение пальца
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+
+                            if (change.changedToUp()) {
+                                // Палец поднят
+                                onDragEnd()
+                                break
+                            }
+
+                            // Вычисляем новую абсолютную позицию
+                            val newAbsolutePosition = elementPosition + change.position
+                            onDragMove(newAbsolutePosition)
+                            change.consume()
+                        }
+                    } else {
+                        // Это был короткий tap — onClick
+                        onClick()
                     }
-                )
+                }
             }
             .padding(horizontal = paddingH, vertical = paddingV),
         verticalAlignment = Alignment.Top
@@ -379,17 +398,14 @@ private fun DraggableVariableView(
 @Composable
 private fun OperatorView(
     operator: FormulaElement.Operator,
-    scale: Float,
-    isDragged: Boolean
+    scale: Float
 ) {
     Text(
         text = operator.symbol,
         color = FormulaColors.operatorColor,
         fontSize = (28 * scale).sp,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier
-            .padding(horizontal = 4.dp)
-            .alpha(if (isDragged) 0.4f else 1f)
+        modifier = Modifier.padding(horizontal = 4.dp)
     )
 }
 
@@ -447,8 +463,7 @@ private fun FractionView(
     hoverState: HoverState,
     onDragStart: (FormulaElement, Offset) -> Unit,
     onDragEnd: () -> Unit,
-    onDrag: (Offset) -> Unit,
-    onHover: (String?, DropSide?) -> Unit,
+    onDragMove: (Offset) -> Unit,
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
     nestingLevel: Int
@@ -479,8 +494,7 @@ private fun FractionView(
             hoverState = hoverState,
             onDragStart = onDragStart,
             onDragEnd = onDragEnd,
-            onDrag = onDrag,
-            onHover = onHover,
+            onDragMove = onDragMove,
             onEllipsisClick = onEllipsisClick,
             onVariableClick = onVariableClick,
             nestingLevel = nestingLevel + 1
@@ -510,8 +524,7 @@ private fun FractionView(
             hoverState = hoverState,
             onDragStart = onDragStart,
             onDragEnd = onDragEnd,
-            onDrag = onDrag,
-            onHover = onHover,
+            onDragMove = onDragMove,
             onEllipsisClick = onEllipsisClick,
             onVariableClick = onVariableClick,
             nestingLevel = nestingLevel + 1

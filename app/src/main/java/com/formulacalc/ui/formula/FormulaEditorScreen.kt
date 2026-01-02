@@ -52,8 +52,7 @@ fun FormulaEditorScreen(
                     hoverState = state.hoverState,
                     onDragStart = { element, offset -> viewModel.onDragStart(element, offset) },
                     onDragEnd = { viewModel.onDragEnd() },
-                    onDrag = { viewModel.onDrag(it) },
-                    onHover = { targetId, side -> viewModel.onHover(targetId, side) },
+                    onDragMove = { viewModel.onDragMove(it) },
                     onEllipsisClick = { viewModel.onEllipsisClick(it) },
                     onVariableClick = { viewModel.onVariableClick(it) }
                 )
@@ -224,8 +223,7 @@ private fun FormulaArea(
     hoverState: HoverState,
     onDragStart: (com.formulacalc.model.FormulaElement, androidx.compose.ui.geometry.Offset) -> Unit,
     onDragEnd: () -> Unit,
-    onDrag: (androidx.compose.ui.geometry.Offset) -> Unit,
-    onHover: (String?, com.formulacalc.model.DropSide?) -> Unit,
+    onDragMove: (androidx.compose.ui.geometry.Offset) -> Unit,
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit
 ) {
@@ -257,8 +255,7 @@ private fun FormulaArea(
             hoverState = hoverState,
             onDragStart = onDragStart,
             onDragEnd = onDragEnd,
-            onDrag = onDrag,
-            onHover = onHover,
+            onDragMove = onDragMove,
             onEllipsisClick = onEllipsisClick,
             onVariableClick = onVariableClick
         )
