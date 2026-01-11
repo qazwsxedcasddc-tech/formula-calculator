@@ -337,7 +337,7 @@ private fun FormulaElementView(
                 variable = element,
                 scale = scale,
                 isDragged = isDraggedElement,
-                variableValue = variableValues[element.displayValue],
+                variableValue = variableValues[element.id], // Используем ID вместо имени
                 onClick = { onVariableClick(element.id) },
                 onDragStart = { offset -> onDragStart(element, offset) },
                 onDragEnd = onDragEnd,

@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import android.util.Log
+import com.formulacalc.util.AppLogger
 
 /**
  * Состояние редактора формул
@@ -30,7 +31,7 @@ data class FormulaEditorState(
     val showVariableInput: Boolean = false,
     val variableInputTargetId: String? = null,
     val variableInputName: String = "",
-    // Значения переменных: ключ = имя переменной (displayValue), значение = число
+    // Значения переменных: ключ = ID переменной (уникальный), значение = число
     val variableValues: Map<String, Double> = emptyMap(),
     // Результат вычисления
     val calculationResult: Double? = null,
@@ -58,6 +59,7 @@ class FormulaEditorViewModel : ViewModel() {
         Log.d("DragDrop", "🟢 DRAG START: ${element.toLogString()}")
         Log.d("DragDrop", "   Position: $fingerPosition")
         Log.d("DragDrop", "   Current formula: ${_state.value.elements.toLogString()}")
+        AppLogger.userDragStart(element.toLogString(), "формула")
         boundsRegistry.logAllBounds("   ")
         _state.update {
             it.copy(
@@ -135,6 +137,9 @@ class FormulaEditorViewModel : ViewModel() {
             Log.d("DragDrop", "   AFTER: ${newElements.toLogString()}")
             Log.d("DragDrop", "═══════════════════════════════════════")
 
+            AppLogger.userDragEnd(draggedElement.toLogString(), targetElement?.toLogString(), side.name)
+            AppLogger.formulaChanged(newElements.toLogString())
+
             _state.update {
                 it.copy(
                     elements = newElements,
@@ -145,6 +150,7 @@ class FormulaEditorViewModel : ViewModel() {
         } else {
             Log.d("DragDrop", "   ❌ Drop cancelled (no valid target)")
             Log.d("DragDrop", "═══════════════════════════════════════")
+            AppLogger.userDragEnd(draggedElement?.toLogString() ?: "?", null, null)
             // Просто сбрасываем drag state
             _state.update {
                 it.copy(
@@ -159,6 +165,7 @@ class FormulaEditorViewModel : ViewModel() {
      * Сброс формулы к начальному состоянию
      */
     fun reset() {
+        AppLogger.userReset()
         boundsRegistry.clear()
         _state.update {
             FormulaEditorState()
@@ -171,6 +178,8 @@ class FormulaEditorViewModel : ViewModel() {
      * Клик на ellipsis — показать меню выбора оператора
      */
     fun onEllipsisClick(id: String) {
+        AppLogger.userTap("ellipsis", "id=$id")
+        AppLogger.dialogOpened("OperatorMenu", "для $id")
         _state.update {
             it.copy(
                 showOperatorMenu = true,
@@ -184,6 +193,7 @@ class FormulaEditorViewModel : ViewModel() {
      */
     fun selectOperator(type: OperatorType) {
         val targetId = _state.value.operatorMenuTargetId ?: return
+        AppLogger.userSelectOperator(type.name, targetId)
 
         _state.update {
             it.copy(
@@ -192,6 +202,7 @@ class FormulaEditorViewModel : ViewModel() {
                 operatorMenuTargetId = null
             )
         }
+        AppLogger.formulaChanged(_state.value.elements.toLogString())
     }
 
     /**
@@ -301,6 +312,7 @@ class FormulaEditorViewModel : ViewModel() {
      */
     fun dropPreset(preset: PresetFormula) {
         Log.d("FormulaEditor", "dropPreset called: ${preset.name}")
+        AppLogger.userDropPreset(preset.name)
 
         // Конвертируем preset в элементы (только правая часть)
         val newElements = preset.toFormulaElements()
@@ -313,6 +325,7 @@ class FormulaEditorViewModel : ViewModel() {
 
             currentState.copy(elements = updatedElements)
         }
+        AppLogger.formulaChanged(_state.value.elements.toLogString())
     }
 
     /**
@@ -338,6 +351,8 @@ class FormulaEditorViewModel : ViewModel() {
     fun onVariableClickForValue(id: String) {
         val element = _state.value.elements.findById(id)
         if (element is FormulaElement.Variable) {
+            AppLogger.userTap("переменная", "${element.displayValue} (id=$id)")
+            AppLogger.dialogOpened("VariableInput", "для ${element.displayValue}")
             _state.update {
                 it.copy(
                     showVariableInput = true,
@@ -349,14 +364,17 @@ class FormulaEditorViewModel : ViewModel() {
     }
 
     /**
-     * Сохранить значение переменной
+     * Сохранить значение переменной по ID
      */
-    fun setVariableValue(variableName: String, value: Double?) {
+    fun setVariableValue(variableId: String, value: Double?) {
+        val varName = _state.value.variableInputName
+        AppLogger.userInputValue(varName, variableId, value)
+
         _state.update { state ->
             val newValues = if (value != null) {
-                state.variableValues + (variableName to value)
+                state.variableValues + (variableId to value)
             } else {
-                state.variableValues - variableName
+                state.variableValues - variableId
             }
             state.copy(
                 variableValues = newValues,
@@ -395,15 +413,16 @@ class FormulaEditorViewModel : ViewModel() {
     fun calculateResult() {
         val state = _state.value
 
-        // Собираем все переменные из формулы
-        val allVariables = collectVariables(state.elements)
+        // Собираем все ID переменных из формулы (кроме констант)
+        val allVariableIds = collectVariableIds(state.elements)
 
         // Проверяем, все ли переменные заданы
-        val missingVariables = allVariables.filter {
-            !state.variableValues.containsKey(it) && !isConstant(it)
+        val missingVariables = allVariableIds.filter {
+            !state.variableValues.containsKey(it)
         }
 
         if (missingVariables.isNotEmpty()) {
+            AppLogger.calculationMissing(missingVariables.toSet())
             _state.update {
                 it.copy(
                     calculationResult = null,
@@ -417,9 +436,11 @@ class FormulaEditorViewModel : ViewModel() {
             // Конвертируем формулу в строку и вычисляем
             val formulaString = elementsToString(state.elements, state.variableValues)
             Log.d("Calculator", "Formula string: $formulaString")
+            AppLogger.calculationStarted(state.elements.toLogString(), state.variableValues)
 
             // Простое вычисление (можно заменить на полноценный парсер)
             val result = evaluateSimple(formulaString)
+            AppLogger.calculationResult(result, formulaString)
 
             _state.update {
                 it.copy(
@@ -429,6 +450,7 @@ class FormulaEditorViewModel : ViewModel() {
             }
         } catch (e: Exception) {
             Log.e("Calculator", "Calculation error", e)
+            AppLogger.calculationError(e.message ?: "Unknown error", state.elements.toLogString())
             _state.update {
                 it.copy(
                     calculationResult = null,
@@ -439,16 +461,21 @@ class FormulaEditorViewModel : ViewModel() {
     }
 
     /**
-     * Собрать все имена переменных из формулы
+     * Собрать все ID переменных из формулы (кроме констант)
      */
-    private fun collectVariables(elements: List<FormulaElement>): Set<String> {
+    private fun collectVariableIds(elements: List<FormulaElement>): Set<String> {
         val result = mutableSetOf<String>()
         for (element in elements) {
             when (element) {
-                is FormulaElement.Variable -> result.add(element.displayValue)
+                is FormulaElement.Variable -> {
+                    // Константы не требуют ввода значений
+                    if (!isConstant(element.displayValue)) {
+                        result.add(element.id)
+                    }
+                }
                 is FormulaElement.Fraction -> {
-                    result.addAll(collectVariables(element.numerator))
-                    result.addAll(collectVariables(element.denominator))
+                    result.addAll(collectVariableIds(element.numerator))
+                    result.addAll(collectVariableIds(element.denominator))
                 }
                 else -> {}
             }
@@ -465,6 +492,7 @@ class FormulaEditorViewModel : ViewModel() {
 
     /**
      * Конвертировать элементы в строку для вычисления
+     * values - Map с ID переменной как ключ
      */
     private fun elementsToString(
         elements: List<FormulaElement>,
@@ -474,7 +502,8 @@ class FormulaEditorViewModel : ViewModel() {
         for (element in elements) {
             when (element) {
                 is FormulaElement.Variable -> {
-                    val value = values[element.displayValue] ?: getConstantValue(element.displayValue) ?: 1.0
+                    // Сначала пробуем по ID, потом константу
+                    val value = values[element.id] ?: getConstantValue(element.displayValue) ?: 1.0
                     sb.append(value)
                     element.exponent?.let { exp ->
                         when (exp) {

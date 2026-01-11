@@ -26,7 +26,12 @@ import com.formulacalc.model.PresetFormula
 import com.formulacalc.ui.DragData
 import com.formulacalc.ui.dropTarget
 import com.formulacalc.viewmodel.FormulaEditorViewModel
+import com.formulacalc.util.AppLogger
 import java.text.DecimalFormat
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 
 /**
  * Экран редактора формул с поддержкой drag & drop
@@ -37,6 +42,8 @@ fun FormulaEditorScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.state.collectAsState()
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     // Предоставляем boundsRegistry через CompositionLocal
     CompositionLocalProvider(LocalElementBoundsRegistry provides viewModel.boundsRegistry) {
@@ -59,21 +66,45 @@ fun FormulaEditorScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
 
-                    // Кнопка сброса
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFEE5A5A))
-                            .clickable { viewModel.reset() },
-                        contentAlignment = Alignment.Center
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "✕",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        // Кнопка копирования логов (для отладки)
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF6366F1))
+                                .clickable {
+                                    val logs = AppLogger.getLogsAsString()
+                                    clipboardManager.setText(AnnotatedString(logs))
+                                    Toast.makeText(context, "Логи скопированы!", Toast.LENGTH_SHORT).show()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "📋",
+                                fontSize = 14.sp
+                            )
+                        }
+
+                        // Кнопка сброса
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFEE5A5A))
+                                .clickable { viewModel.reset() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "✕",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
 
@@ -172,16 +203,18 @@ fun FormulaEditorScreen(
             }
 
             // Диалог ввода значения переменной
-            if (state.showVariableInput) {
+            val targetId = state.variableInputTargetId
+            if (state.showVariableInput && targetId != null) {
                 VariableInputDialog(
                     variableName = state.variableInputName,
-                    currentValue = state.variableValues[state.variableInputName]?.let {
+                    currentValue = state.variableValues[targetId]?.let {
                         formatResultNumber(it)
                     } ?: "",
                     onValueChange = { /* не используется */ },
                     onDismiss = { viewModel.dismissVariableInput() },
                     onConfirm = { value ->
-                        viewModel.setVariableValue(state.variableInputName, value)
+                        // Используем ID переменной вместо имени
+                        viewModel.setVariableValue(targetId, value)
                     }
                 )
             }
@@ -201,41 +234,46 @@ private fun formatResultNumber(value: Double): String {
 }
 
 /**
- * Отображение результата вычисления
+ * Отображение результата вычисления — компактный блок с горизонтальным скроллом
  */
 @Composable
 private fun ResultDisplay(result: Double) {
+    val scrollState = rememberScrollState()
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .height(48.dp) // Фиксированная высота
             .clip(RoundedCornerShape(12.dp))
             .background(
                 brush = Brush.linearGradient(
                     colors = listOf(
-                        Color(0xFF22C55E).copy(alpha = 0.1f),
-                        Color(0xFF16A34A).copy(alpha = 0.1f)
+                        Color(0xFF22C55E).copy(alpha = 0.15f),
+                        Color(0xFF16A34A).copy(alpha = 0.15f)
                     )
                 )
             )
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+            modifier = Modifier
+                .fillMaxSize()
+                .horizontalScroll(scrollState)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "= ",
-                style = MaterialTheme.typography.headlineMedium,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.Medium,
                 color = Color(0xFF22C55E)
             )
             Text(
                 text = formatResultNumber(result),
-                style = MaterialTheme.typography.headlineMedium,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF22C55E)
+                color = Color(0xFF22C55E),
+                maxLines = 1
             )
         }
     }

@@ -125,19 +125,6 @@ fun VariableInputDialog(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Быстрые кнопки для частых значений
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    QuickValueButton("0", Modifier.weight(1f)) { inputValue = "0" }
-                    QuickValueButton("1", Modifier.weight(1f)) { inputValue = "1" }
-                    QuickValueButton("10", Modifier.weight(1f)) { inputValue = "10" }
-                    QuickValueButton("100", Modifier.weight(1f)) { inputValue = "100" }
-                }
-
                 Spacer(modifier = Modifier.height(20.dp))
 
                 // Кнопки действий
@@ -176,25 +163,3 @@ fun VariableInputDialog(
     }
 }
 
-@Composable
-private fun QuickValueButton(
-    value: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.secondaryContainer)
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSecondaryContainer
-        )
-    }
-}
