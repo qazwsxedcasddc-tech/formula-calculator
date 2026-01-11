@@ -26,6 +26,7 @@ import com.formulacalc.model.PresetFormula
 import com.formulacalc.ui.DragData
 import com.formulacalc.ui.dropTarget
 import com.formulacalc.viewmodel.FormulaEditorViewModel
+import java.text.DecimalFormat
 
 /**
  * Экран редактора формул с поддержкой drag & drop
@@ -81,14 +82,20 @@ fun FormulaEditorScreen(
                     elements = state.elements,
                     dragState = state.dragState,
                     hoverState = state.hoverState,
+                    variableValues = state.variableValues,
                     onDragStart = { element, offset -> viewModel.onDragStart(element, offset) },
                     onDragEnd = { viewModel.onDragEnd() },
                     onDragMove = { viewModel.onDragMove(it) },
                     onEllipsisClick = { viewModel.onEllipsisClick(it) },
-                    onVariableClick = { viewModel.onVariableClick(it) },
+                    onVariableClick = { viewModel.onVariableClickForValue(it) }, // Для ввода значений
                     onPresetDrop = { preset -> viewModel.dropPreset(preset) },
                     modifier = Modifier.weight(1f)
                 )
+
+                // Результат вычисления
+                state.calculationResult?.let { result ->
+                    ResultDisplay(result = result)
+                }
 
                 // Компактные подсказки внизу
                 Row(
@@ -163,18 +170,87 @@ fun FormulaEditorScreen(
                     onDismiss = { viewModel.dismissExponentKeyboard() }
                 )
             }
+
+            // Диалог ввода значения переменной
+            if (state.showVariableInput) {
+                VariableInputDialog(
+                    variableName = state.variableInputName,
+                    currentValue = state.variableValues[state.variableInputName]?.let {
+                        formatResultNumber(it)
+                    } ?: "",
+                    onValueChange = { /* не используется */ },
+                    onDismiss = { viewModel.dismissVariableInput() },
+                    onConfirm = { value ->
+                        viewModel.setVariableValue(state.variableInputName, value)
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Форматирование числа для результата
+ */
+private fun formatResultNumber(value: Double): String {
+    return if (value == value.toLong().toDouble() && kotlin.math.abs(value) < 1e10) {
+        value.toLong().toString()
+    } else {
+        DecimalFormat("#.########").format(value)
+    }
+}
+
+/**
+ * Отображение результата вычисления
+ */
+@Composable
+private fun ResultDisplay(result: Double) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFF22C55E).copy(alpha = 0.1f),
+                        Color(0xFF16A34A).copy(alpha = 0.1f)
+                    )
+                )
+            )
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "= ",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF22C55E)
+            )
+            Text(
+                text = formatResultNumber(result),
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF22C55E)
+            )
         }
     }
 }
 
 /**
  * Область с формулой — поддерживает drop для preset формул
+ * С горизонтальным скроллом и индикаторами
  */
 @Composable
 private fun FormulaArea(
     elements: List<com.formulacalc.model.FormulaElement>,
     dragState: DragState,
     hoverState: HoverState,
+    variableValues: Map<String, Double>,
     onDragStart: (com.formulacalc.model.FormulaElement, androidx.compose.ui.geometry.Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDragMove: (androidx.compose.ui.geometry.Offset) -> Unit,
@@ -183,8 +259,8 @@ private fun FormulaArea(
     onPresetDrop: (PresetFormula) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scrollState = rememberScrollState()
     var isDragOver by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
 
     // Анимация цвета границы при drag over
     val borderColor by animateColorAsState(
@@ -197,6 +273,10 @@ private fun FormulaArea(
     )
 
     val borderWidth = if (isDragOver) 2.dp else 1.dp
+
+    // Проверяем, можно ли скроллить
+    val canScrollLeft = scrollState.value > 0
+    val canScrollRight = scrollState.value < scrollState.maxValue
 
     Box(
         modifier = modifier
@@ -224,30 +304,73 @@ private fun FormulaArea(
                     }
                 }
             )
-            .horizontalScroll(scrollState)
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
     ) {
-        if (elements.isEmpty()) {
-            Text(
-                text = if (isDragOver) "Отпустите формулу здесь" else "Перетащите формулу сюда",
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (isDragOver) {
-                    FormulaColors.dropIndicatorGreen
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                }
+        // Контент с горизонтальным скроллом
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .horizontalScroll(scrollState)
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (elements.isEmpty()) {
+                Text(
+                    text = if (isDragOver) "Отпустите формулу здесь" else "Перетащите формулу сюда",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isDragOver) {
+                        FormulaColors.dropIndicatorGreen
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    }
+                )
+            } else {
+                FormulaRenderer(
+                    elements = elements,
+                    dragState = dragState,
+                    hoverState = hoverState,
+                    onDragStart = onDragStart,
+                    onDragEnd = onDragEnd,
+                    onDragMove = onDragMove,
+                    onEllipsisClick = onEllipsisClick,
+                    onVariableClick = onVariableClick,
+                    variableValues = variableValues
+                )
+            }
+        }
+
+        // Градиент слева — показывает что можно скроллить влево
+        if (canScrollLeft) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .width(24.dp)
+                    .fillMaxHeight()
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.surface,
+                                Color.Transparent
+                            )
+                        )
+                    )
             )
-        } else {
-            FormulaRenderer(
-                elements = elements,
-                dragState = dragState,
-                hoverState = hoverState,
-                onDragStart = onDragStart,
-                onDragEnd = onDragEnd,
-                onDragMove = onDragMove,
-                onEllipsisClick = onEllipsisClick,
-                onVariableClick = onVariableClick
+        }
+
+        // Градиент справа — показывает что можно скроллить вправо
+        if (canScrollRight) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .width(24.dp)
+                    .fillMaxHeight()
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                MaterialTheme.colorScheme.surface
+                            )
+                        )
+                    )
             )
         }
     }

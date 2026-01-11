@@ -39,14 +39,11 @@ fun createFraction(
 // ===== Начальная пустая формула =====
 
 /**
- * Начальная пустая формула: просто "F ="
- * Пользователь перетаскивает формулы из нижней панели
+ * Начальная пустая формула — пустой список.
+ * Пользователь перетаскивает формулы из нижней панели.
  */
 fun getInitialGravityFormula(): List<FormulaElement> {
-    return listOf(
-        createVariable("F"),
-        createEquals()
-    )
+    return emptyList()
 }
 
 /**
@@ -140,6 +137,15 @@ fun List<FormulaElement>.removeById(id: String): List<FormulaElement> {
     return result
 }
 
+// ===== Вспомогательные функции для работы со скобками и операторами =====
+
+private fun FormulaElement.Operator.isParenthesis(): Boolean =
+    type == OperatorType.OPEN_PAREN || type == OperatorType.CLOSE_PAREN
+
+private fun FormulaElement.Operator.isMathOperator(): Boolean =
+    type == OperatorType.PLUS || type == OperatorType.MINUS ||
+    type == OperatorType.MULTIPLY || type == OperatorType.DIVIDE
+
 // ===== Очистка "сиротских" операторов =====
 
 private fun List<FormulaElement>.cleanOrphanedOperators(): List<FormulaElement> {
@@ -148,15 +154,25 @@ private fun List<FormulaElement>.cleanOrphanedOperators(): List<FormulaElement> 
     for (element in this) {
         val prev = result.lastOrNull()
 
-        // Пропускаем операторы/ellipsis в начале (кроме =)
-        if (result.isEmpty() && (element is FormulaElement.Operator || element is FormulaElement.Ellipsis)) {
+        // Скобки всегда добавляем
+        if (element is FormulaElement.Operator && element.isParenthesis()) {
+            result.add(element)
             continue
         }
 
-        // Пропускаем повторяющиеся операторы
-        if ((element is FormulaElement.Operator || element is FormulaElement.Ellipsis) &&
-            (prev is FormulaElement.Operator || prev is FormulaElement.Ellipsis)
-        ) {
+        // Пропускаем математические операторы/ellipsis в начале
+        if (result.isEmpty() && (element is FormulaElement.Ellipsis ||
+            (element is FormulaElement.Operator && element.isMathOperator()))) {
+            continue
+        }
+
+        // Пропускаем повторяющиеся математические операторы
+        val elementIsMathOp = element is FormulaElement.Operator && element.isMathOperator()
+        val elementIsEllipsis = element is FormulaElement.Ellipsis
+        val prevIsMathOp = prev is FormulaElement.Operator && prev.isMathOperator()
+        val prevIsEllipsis = prev is FormulaElement.Ellipsis
+
+        if ((elementIsMathOp || elementIsEllipsis) && (prevIsMathOp || prevIsEllipsis)) {
             // Заменяем на ellipsis
             result[result.lastIndex] = createEllipsis()
             continue
@@ -165,10 +181,12 @@ private fun List<FormulaElement>.cleanOrphanedOperators(): List<FormulaElement> 
         result.add(element)
     }
 
-    // Удаляем trailing операторы
+    // Удаляем trailing математические операторы/ellipsis (но НЕ скобки)
     while (result.isNotEmpty()) {
         val last = result.last()
-        if (last is FormulaElement.Operator || last is FormulaElement.Ellipsis) {
+        val shouldRemove = last is FormulaElement.Ellipsis ||
+                          (last is FormulaElement.Operator && last.isMathOperator())
+        if (shouldRemove) {
             result.removeLast()
         } else {
             break
@@ -192,6 +210,10 @@ fun List<FormulaElement>.normalize(): List<FormulaElement> {
                 if (prev is FormulaElement.Variable || prev is FormulaElement.Fraction) {
                     result.add(createEllipsis())
                 }
+                // Добавляем ellipsis после закрывающей скобки перед дробью
+                if (prev is FormulaElement.Operator && prev.type == OperatorType.CLOSE_PAREN) {
+                    result.add(createEllipsis())
+                }
                 result.add(
                     element.copy(
                         numerator = element.numerator.normalize(),
@@ -201,19 +223,37 @@ fun List<FormulaElement>.normalize(): List<FormulaElement> {
             }
 
             is FormulaElement.Operator -> {
-                // Пропускаем повторяющиеся операторы
-                if (prev is FormulaElement.Operator || prev is FormulaElement.Ellipsis) {
-                    if (prev is FormulaElement.Operator) {
-                        result[result.lastIndex] = createEllipsis()
+                if (element.isParenthesis()) {
+                    // Скобки — особая обработка
+                    if (element.type == OperatorType.OPEN_PAREN) {
+                        // Открывающая скобка после переменной/дроби/закрывающей скобки — добавляем ellipsis
+                        if (prev is FormulaElement.Variable || prev is FormulaElement.Fraction ||
+                            (prev is FormulaElement.Operator && prev.type == OperatorType.CLOSE_PAREN)) {
+                            result.add(createEllipsis())
+                        }
                     }
-                } else {
                     result.add(element)
+                } else {
+                    // Математические операторы — пропускаем повторяющиеся
+                    val prevIsMathOp = prev is FormulaElement.Operator && prev.isMathOperator()
+                    val prevIsEllipsis = prev is FormulaElement.Ellipsis
+
+                    if (prevIsMathOp || prevIsEllipsis) {
+                        if (prevIsMathOp) {
+                            result[result.lastIndex] = createEllipsis()
+                        }
+                    } else {
+                        result.add(element)
+                    }
                 }
             }
 
             is FormulaElement.Ellipsis -> {
-                // Пропускаем orphaned ellipsis
-                if (prev !is FormulaElement.Variable && prev !is FormulaElement.Fraction) {
+                // Пропускаем orphaned ellipsis (не после переменной/дроби/закрывающей скобки)
+                val validPrev = prev is FormulaElement.Variable ||
+                                prev is FormulaElement.Fraction ||
+                                (prev is FormulaElement.Operator && prev.type == OperatorType.CLOSE_PAREN)
+                if (!validPrev) {
                     continue
                 }
                 result.add(element)
@@ -222,6 +262,10 @@ fun List<FormulaElement>.normalize(): List<FormulaElement> {
             is FormulaElement.Variable -> {
                 // Добавляем ellipsis между двумя переменными/дробями
                 if (prev is FormulaElement.Variable || prev is FormulaElement.Fraction) {
+                    result.add(createEllipsis())
+                }
+                // Добавляем ellipsis после закрывающей скобки перед переменной
+                if (prev is FormulaElement.Operator && prev.type == OperatorType.CLOSE_PAREN) {
                     result.add(createEllipsis())
                 }
                 result.add(element)
@@ -233,11 +277,25 @@ fun List<FormulaElement>.normalize(): List<FormulaElement> {
         }
     }
 
-    // Удаляем trailing операторы/ellipsis
+    // Удаляем trailing математические операторы/ellipsis (но НЕ скобки)
     while (result.isNotEmpty()) {
         val last = result.last()
-        if (last is FormulaElement.Operator || last is FormulaElement.Ellipsis) {
+        val shouldRemove = last is FormulaElement.Ellipsis ||
+                          (last is FormulaElement.Operator && last.isMathOperator())
+        if (shouldRemove) {
             result.removeLast()
+        } else {
+            break
+        }
+    }
+
+    // Удаляем leading математические операторы/ellipsis (но НЕ скобки)
+    while (result.isNotEmpty()) {
+        val first = result.first()
+        val shouldRemove = first is FormulaElement.Ellipsis ||
+                          (first is FormulaElement.Operator && first.isMathOperator())
+        if (shouldRemove) {
+            result.removeAt(0)
         } else {
             break
         }
@@ -495,42 +553,59 @@ private fun convertSimpleTokens(tokens: List<FormulaToken>): List<FormulaElement
 
 /**
  * Добавляет новые элементы к существующей формуле.
- * Автоматически вставляет ellipsis между формулами.
+ * Автоматически вставляет ellipsis между формулами через normalize().
  *
- * Если формула была пустая или содержала только "F =" — заменяем всё.
- * Если уже есть элементы — добавляем ellipsis и новые элементы.
+ * Если формула пуста — просто добавляем новые элементы.
+ * Если уже есть элементы — добавляем новые и нормализуем.
  */
 fun List<FormulaElement>.appendElements(newElements: List<FormulaElement>): List<FormulaElement> {
     if (newElements.isEmpty()) return this
+    if (this.isEmpty()) return newElements.normalize()
 
-    // Находим индекс знака "="
-    val equalsIndex = this.indexOfFirst { it is FormulaElement.Equals }
-
-    // Берём часть до = (включительно) и часть после =
-    val prefix = if (equalsIndex >= 0) {
-        this.subList(0, equalsIndex + 1)
-    } else {
-        emptyList()
-    }
-
-    val existingRightSide = if (equalsIndex >= 0 && equalsIndex < this.lastIndex) {
-        this.subList(equalsIndex + 1, this.size)
-    } else if (equalsIndex < 0) {
-        this
-    } else {
-        emptyList()
-    }
-
-    // Проверяем, есть ли значимые элементы в правой части
-    val hasContent = existingRightSide.any {
+    // Проверяем, есть ли значимые элементы
+    val hasContent = this.any {
         it is FormulaElement.Variable || it is FormulaElement.Fraction
     }
 
     return if (hasContent) {
-        // Уже есть элементы — добавляем через ellipsis
-        (prefix + existingRightSide + newElements).normalize()
+        // Уже есть элементы — добавляем и нормализуем (ellipsis добавится автоматически)
+        (this + newElements).normalize()
     } else {
-        // Правая часть пуста — просто добавляем
-        (prefix + newElements).normalize()
+        // Нет значимых элементов — просто добавляем
+        newElements.normalize()
     }
+}
+
+// ===== Логирование =====
+
+/**
+ * Конвертирует элемент в строку для логирования
+ */
+fun FormulaElement.toLogString(): String {
+    return when (this) {
+        is FormulaElement.Variable -> {
+            val exp = exponent?.let {
+                when (it) {
+                    is Exponent.Simple -> "^${it.value}"
+                    is Exponent.Fraction -> "^(${it.numerator}/${it.denominator})"
+                }
+            } ?: ""
+            "Var($displayValue$exp)"
+        }
+        is FormulaElement.Operator -> "Op(${type.symbol})"
+        is FormulaElement.Equals -> "Eq(=)"
+        is FormulaElement.Ellipsis -> "Ellipsis(···)"
+        is FormulaElement.Fraction -> {
+            val num = numerator.joinToString(" ") { it.toLogString() }
+            val den = denominator.joinToString(" ") { it.toLogString() }
+            "Frac[$num / $den]"
+        }
+    }
+}
+
+/**
+ * Конвертирует список элементов в строку для логирования
+ */
+fun List<FormulaElement>.toLogString(): String {
+    return joinToString(" ") { it.toLogString() }
 }
