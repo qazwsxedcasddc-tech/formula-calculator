@@ -1,6 +1,7 @@
 package com.formulacalc.util
 
 import com.formulacalc.model.FormulaElement
+import com.formulacalc.model.clone
 
 /**
  * Менеджер Undo/Redo для формул
