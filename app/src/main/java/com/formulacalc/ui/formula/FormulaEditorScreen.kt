@@ -16,8 +16,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,11 +30,21 @@ import com.formulacalc.ui.DragData
 import com.formulacalc.ui.dropTarget
 import com.formulacalc.viewmodel.FormulaEditorViewModel
 import com.formulacalc.util.AppLogger
+import com.formulacalc.util.CalculationEntry
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.verticalScroll
 import java.text.DecimalFormat
+import android.content.Intent
 import android.widget.Toast
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import kotlinx.coroutines.launch
 
 /**
  * Экран редактора формул с поддержкой drag & drop
@@ -44,6 +57,25 @@ fun FormulaEditorScreen(
     val state by viewModel.state.collectAsState()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Показываем snackbar при удалении
+    LaunchedEffect(state.showDeleteSnackbar) {
+        if (state.showDeleteSnackbar) {
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar(
+                    message = "Удалено: ${state.deletedElementName}",
+                    actionLabel = "Отменить"
+                ).let { result ->
+                    if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                        viewModel.undo()
+                    }
+                }
+                viewModel.dismissDeleteSnackbar()
+            }
+        }
+    }
 
     // Предоставляем boundsRegistry через CompositionLocal
     CompositionLocalProvider(LocalElementBoundsRegistry provides viewModel.boundsRegistry) {
@@ -67,9 +99,64 @@ fun FormulaEditorScreen(
                     )
 
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Кнопка Undo
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (state.canUndo) Color(0xFF3B82F6) else Color(0xFFE2E8F0)
+                                )
+                                .clickable(enabled = state.canUndo) { viewModel.undo() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "↩",
+                                fontSize = 16.sp,
+                                color = if (state.canUndo) Color.White else Color(0xFFA0AEC0)
+                            )
+                        }
+
+                        // Кнопка Redo
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (state.canRedo) Color(0xFF3B82F6) else Color(0xFFE2E8F0)
+                                )
+                                .clickable(enabled = state.canRedo) { viewModel.redo() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "↪",
+                                fontSize = 16.sp,
+                                color = if (state.canRedo) Color.White else Color(0xFFA0AEC0)
+                            )
+                        }
+
+                        // Кнопка истории
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (state.showHistoryPanel) Color(0xFF22C55E) else Color(0xFF94A3B8)
+                                )
+                                .clickable { viewModel.toggleHistoryPanel() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "📊",
+                                fontSize = 14.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
                         // Кнопка копирования логов (для отладки)
                         Box(
                             modifier = Modifier
@@ -120,12 +207,64 @@ fun FormulaEditorScreen(
                     onEllipsisClick = { viewModel.onEllipsisClick(it) },
                     onVariableClick = { viewModel.onVariableClickForValue(it) }, // Для ввода значений
                     onPresetDrop = { preset -> viewModel.dropPreset(preset) },
+                    boundsRegistry = viewModel.boundsRegistry,
                     modifier = Modifier.weight(1f)
                 )
 
-                // Результат вычисления
+                // Результат вычисления с кнопкой поделиться
                 state.calculationResult?.let { result ->
-                    ResultDisplay(result = result)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ResultDisplay(
+                            result = result,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        // Кнопка поделиться
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF3B82F6))
+                                .clickable {
+                                    val shareText = "Результат: ${formatResultNumber(result)}"
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_TEXT, shareText)
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, "Поделиться результатом"))
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "📤",
+                                fontSize = 20.sp
+                            )
+                        }
+                    }
+                }
+
+                // Панель истории
+                if (state.showHistoryPanel && state.calculationHistory.isNotEmpty()) {
+                    HistoryPanel(
+                        history = state.calculationHistory,
+                        onClear = { viewModel.clearHistory() }
+                    )
+                }
+
+                // Зона удаления — показывается только при drag
+                if (state.dragState.isDragging) {
+                    DeleteZone(
+                        isOutsideFormulaArea = !viewModel.boundsRegistry.isInsideFormulaArea(
+                            state.dragState.fingerPosition,
+                            margin = 100f
+                        )
+                    )
                 }
 
                 // Компактные подсказки внизу
@@ -205,6 +344,9 @@ fun FormulaEditorScreen(
             // Диалог ввода значения переменной
             val targetId = state.variableInputTargetId
             if (state.showVariableInput && targetId != null) {
+                val isConstant = isKnownConstant(state.variableInputName)
+                val constantValue = getConstantDefaultValue(state.variableInputName)
+
                 VariableInputDialog(
                     variableName = state.variableInputName,
                     currentValue = state.variableValues[targetId]?.let {
@@ -215,9 +357,20 @@ fun FormulaEditorScreen(
                     onConfirm = { value ->
                         // Используем ID переменной вместо имени
                         viewModel.setVariableValue(targetId, value)
+                    },
+                    isConstant = isConstant,
+                    constantDefaultValue = constantValue,
+                    onWrapInParentheses = {
+                        viewModel.wrapInParentheses(targetId)
                     }
                 )
             }
+
+            // Snackbar для отмены удаления
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
     }
 }
@@ -234,16 +387,170 @@ private fun formatResultNumber(value: Double): String {
 }
 
 /**
- * Отображение результата вычисления — компактный блок с горизонтальным скроллом
+ * Проверить, является ли имя константой
+ */
+private fun isKnownConstant(name: String): Boolean {
+    return name in listOf("π", "e", "c", "G", "φ")
+}
+
+/**
+ * Получить значение константы по умолчанию
+ */
+private fun getConstantDefaultValue(name: String): Double? {
+    return when (name) {
+        "π" -> Math.PI
+        "e" -> Math.E
+        "c" -> 299792458.0
+        "G" -> 6.67430e-11
+        "φ" -> 1.618033988749895
+        else -> null
+    }
+}
+
+/**
+ * Панель истории вычислений
  */
 @Composable
-private fun ResultDisplay(result: Double) {
-    val scrollState = rememberScrollState()
+private fun HistoryPanel(
+    history: List<CalculationEntry>,
+    onClear: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .heightIn(max = 150.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFF1F5F9))
+    ) {
+        // Заголовок
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "История (${history.size})",
+                fontWeight = FontWeight.Medium,
+                fontSize = 12.sp,
+                color = Color(0xFF64748B)
+            )
+            Text(
+                text = "Очистить",
+                fontSize = 12.sp,
+                color = Color(0xFFEF4444),
+                modifier = Modifier.clickable { onClear() }
+            )
+        }
+
+        // Список
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+        ) {
+            items(history.take(10)) { entry ->
+                HistoryItem(entry = entry)
+            }
+        }
+    }
+}
+
+/**
+ * Элемент истории
+ */
+@Composable
+private fun HistoryItem(entry: CalculationEntry) {
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                clipboardManager.setText(AnnotatedString(entry.getFormattedResult()))
+                Toast.makeText(context, "Скопировано: ${entry.getFormattedResult()}", Toast.LENGTH_SHORT).show()
+            }
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "= ${entry.getFormattedResult()}",
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = Color(0xFF22C55E)
+            )
+        }
+        Text(
+            text = entry.getFormattedTime(),
+            fontSize = 10.sp,
+            color = Color(0xFF94A3B8)
+        )
+    }
+}
+
+/**
+ * Зона удаления — показывается внизу при перетаскивании
+ */
+@Composable
+private fun DeleteZone(isOutsideFormulaArea: Boolean) {
+    val backgroundColor by animateColorAsState(
+        targetValue = if (isOutsideFormulaArea) {
+            Color(0xFFEF4444) // Красный когда элемент за пределами
+        } else {
+            Color(0xFFEF4444).copy(alpha = 0.3f) // Прозрачный красный
+        },
+        label = "deleteZoneColor"
+    )
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
+            .height(48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(backgroundColor),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "🗑️",
+                fontSize = 20.sp
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (isOutsideFormulaArea) "Отпустите для удаления" else "Перетащите сюда для удаления",
+                color = Color.White,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp
+            )
+        }
+    }
+}
+
+/**
+ * Отображение результата вычисления — компактный блок с горизонтальным скроллом
+ * Клик копирует результат в буфер обмена
+ */
+@Composable
+private fun ResultDisplay(
+    result: Double,
+    modifier: Modifier = Modifier
+) {
+    val scrollState = rememberScrollState()
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    val resultText = formatResultNumber(result)
+
+    Box(
+        modifier = modifier
             .height(48.dp) // Фиксированная высота
             .clip(RoundedCornerShape(12.dp))
             .background(
@@ -254,26 +561,40 @@ private fun ResultDisplay(result: Double) {
                     )
                 )
             )
+            .clickable {
+                clipboardManager.setText(AnnotatedString(resultText))
+                Toast.makeText(context, "Скопировано: $resultText", Toast.LENGTH_SHORT).show()
+            }
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
                 .horizontalScroll(scrollState)
                 .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "= ",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF22C55E)
+                )
+                Text(
+                    text = resultText,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF22C55E),
+                    maxLines = 1
+                )
+            }
+
+            // Иконка копирования
             Text(
-                text = "= ",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF22C55E)
-            )
-            Text(
-                text = formatResultNumber(result),
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF22C55E),
-                maxLines = 1
+                text = "📋",
+                fontSize = 14.sp,
+                modifier = Modifier.padding(start = 8.dp)
             )
         }
     }
@@ -295,6 +616,7 @@ private fun FormulaArea(
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
     onPresetDrop: (PresetFormula) -> Unit,
+    boundsRegistry: ElementBoundsRegistry,
     modifier: Modifier = Modifier
 ) {
     var isDragOver by remember { mutableStateOf(false) }
@@ -333,6 +655,9 @@ private fun FormulaArea(
                     MaterialTheme.colorScheme.surface
                 }
             )
+            .onGloballyPositioned { coordinates ->
+                boundsRegistry.registerFormulaArea(coordinates.boundsInRoot())
+            }
             .dropTarget(
                 onDragOver = { isDragOver = it },
                 onDrop = { data ->

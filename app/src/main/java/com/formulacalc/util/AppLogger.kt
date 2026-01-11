@@ -41,8 +41,8 @@ object AppLogger {
         log("APP", "═══════════════════════════════════════")
     }
 
-    // Основной метод логирования
-    private fun log(category: String, message: String, isError: Boolean = false) {
+    // Основной метод логирования (internal для использования в том же пакете)
+    internal fun log(category: String, message: String, isError: Boolean = false) {
         val timestamp = dateFormat.format(Date())
         val emoji = when {
             isError -> "❌"
@@ -54,6 +54,8 @@ object AppLogger {
             category == "ERROR" -> "❌"
             category == "APP" -> "📱"
             category == "VALUE" -> "💾"
+            category == "DEBUG" -> "🔍"
+            category == "UNDO" -> "↩️"
             else -> "📝"
         }
 
@@ -103,10 +105,19 @@ object AppLogger {
     }
 
     fun userDragEnd(element: String, target: String?, side: String?) {
-        if (target != null && side != null) {
-            log("DRAG", "Завершение перетаскивания: $element → $target ($side)")
-        } else {
-            log("DRAG", "Перетаскивание отменено: $element")
+        when {
+            target != null && side != null -> {
+                log("DRAG", "Завершение перетаскивания: $element → $target ($side)")
+            }
+            side == "RETURN_TO_PLACE" -> {
+                log("DRAG", "Элемент возвращён на место: $element")
+            }
+            side == "DELETED" -> {
+                log("DRAG", "Элемент удалён (перетащен за пределы): $element")
+            }
+            else -> {
+                log("DRAG", "Перетаскивание отменено: $element")
+            }
         }
     }
 
@@ -181,6 +192,34 @@ object AppLogger {
     fun formulaState(elements: String, variableValues: Map<String, Double>) {
         log("CALC", "Состояние формулы: $elements")
         log("CALC", "Значения переменных: $variableValues")
+    }
+
+    // === Undo/Redo ===
+
+    fun undoAction(actionName: String) {
+        log("UNDO", "Отменено: $actionName")
+    }
+
+    fun redoAction() {
+        log("UNDO", "Повторено действие")
+    }
+
+    // === Отладка (Debug) ===
+
+    fun debugBounds(elementId: String, left: Int, top: Int, right: Int, bottom: Int) {
+        log("DEBUG", "Bounds[$elementId]: [$left,$top - $right,$bottom]")
+    }
+
+    fun debugFormulaAreaBounds(left: Int, top: Int, right: Int, bottom: Int) {
+        log("DEBUG", "FormulaArea bounds: [$left,$top - $right,$bottom]")
+    }
+
+    fun debugDropPosition(fingerX: Int, fingerY: Int, isInside: Boolean) {
+        log("DEBUG", "Drop позиция: ($fingerX, $fingerY), внутри области: $isInside")
+    }
+
+    fun debugElementsState(elementsCount: Int, variablesCount: Int, constantsCount: Int) {
+        log("DEBUG", "Состояние: элементов=$elementsCount, переменных=$variablesCount, констант=$constantsCount")
     }
 
     // === Ошибки ===

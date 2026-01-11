@@ -36,6 +36,12 @@ fun createFraction(
     )
 }
 
+fun createParentheses(
+    children: List<FormulaElement> = emptyList()
+): FormulaElement.Parentheses {
+    return FormulaElement.Parentheses(children = children)
+}
+
 // ===== Начальная пустая формула =====
 
 /**
@@ -81,6 +87,10 @@ fun FormulaElement.clone(): FormulaElement {
             numerator = numerator.map { it.clone() },
             denominator = denominator.map { it.clone() }
         )
+        is FormulaElement.Parentheses -> this.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            children = children.map { it.clone() }
+        )
     }
 }
 
@@ -92,6 +102,9 @@ fun List<FormulaElement>.findById(id: String): FormulaElement? {
         if (element is FormulaElement.Fraction) {
             element.numerator.findById(id)?.let { return it }
             element.denominator.findById(id)?.let { return it }
+        }
+        if (element is FormulaElement.Parentheses) {
+            element.children.findById(id)?.let { return it }
         }
     }
     return null
@@ -109,8 +122,8 @@ fun List<FormulaElement>.removeById(id: String): List<FormulaElement> {
             val newNumerator = element.numerator.removeById(id).cleanOrphanedOperators()
             val newDenominator = element.denominator.removeById(id).cleanOrphanedOperators()
 
-            val numHasContent = newNumerator.any { it is FormulaElement.Variable || it is FormulaElement.Fraction }
-            val denHasContent = newDenominator.any { it is FormulaElement.Variable || it is FormulaElement.Fraction }
+            val numHasContent = newNumerator.any { it is FormulaElement.Variable || it is FormulaElement.Fraction || it is FormulaElement.Parentheses }
+            val denHasContent = newDenominator.any { it is FormulaElement.Variable || it is FormulaElement.Fraction || it is FormulaElement.Parentheses }
 
             when {
                 !numHasContent && !denHasContent -> {
@@ -118,16 +131,28 @@ fun List<FormulaElement>.removeById(id: String): List<FormulaElement> {
                 }
                 !numHasContent && denHasContent -> {
                     // Числитель пуст — заменяем дробь знаменателем
-                    result.addAll(newDenominator.filter { it is FormulaElement.Variable || it is FormulaElement.Fraction })
+                    result.addAll(newDenominator.filter { it is FormulaElement.Variable || it is FormulaElement.Fraction || it is FormulaElement.Parentheses })
                 }
                 numHasContent && !denHasContent -> {
                     // Знаменатель пуст — заменяем дробь числителем
-                    result.addAll(newNumerator.filter { it is FormulaElement.Variable || it is FormulaElement.Fraction })
+                    result.addAll(newNumerator.filter { it is FormulaElement.Variable || it is FormulaElement.Fraction || it is FormulaElement.Parentheses })
                 }
                 else -> {
                     // Обе части содержат элементы — сохраняем дробь
                     result.add(element.copy(numerator = newNumerator, denominator = newDenominator))
                 }
+            }
+        } else if (element is FormulaElement.Parentheses) {
+            val newChildren = element.children.removeById(id).cleanOrphanedOperators()
+            val hasContent = newChildren.any { it is FormulaElement.Variable || it is FormulaElement.Fraction || it is FormulaElement.Parentheses }
+
+            if (hasContent) {
+                // Есть содержимое — сохраняем скобки
+                result.add(element.copy(children = newChildren))
+            } else if (newChildren.isEmpty()) {
+                // Скобки пусты — удаляем их
+            } else {
+                // Только операторы — удаляем скобки
             }
         } else {
             result.add(element)
@@ -206,8 +231,8 @@ fun List<FormulaElement>.normalize(): List<FormulaElement> {
 
         when (element) {
             is FormulaElement.Fraction -> {
-                // Добавляем ellipsis между переменной/дробью и дробью
-                if (prev is FormulaElement.Variable || prev is FormulaElement.Fraction) {
+                // Добавляем ellipsis между переменной/дробью/скобками и дробью
+                if (prev is FormulaElement.Variable || prev is FormulaElement.Fraction || prev is FormulaElement.Parentheses) {
                     result.add(createEllipsis())
                 }
                 // Добавляем ellipsis после закрывающей скобки перед дробью
@@ -222,12 +247,24 @@ fun List<FormulaElement>.normalize(): List<FormulaElement> {
                 )
             }
 
+            is FormulaElement.Parentheses -> {
+                // Добавляем ellipsis между переменной/дробью/скобками и скобками
+                if (prev is FormulaElement.Variable || prev is FormulaElement.Fraction || prev is FormulaElement.Parentheses) {
+                    result.add(createEllipsis())
+                }
+                // Добавляем ellipsis после закрывающей скобки
+                if (prev is FormulaElement.Operator && prev.type == OperatorType.CLOSE_PAREN) {
+                    result.add(createEllipsis())
+                }
+                result.add(element.copy(children = element.children.normalize()))
+            }
+
             is FormulaElement.Operator -> {
                 if (element.isParenthesis()) {
                     // Скобки — особая обработка
                     if (element.type == OperatorType.OPEN_PAREN) {
                         // Открывающая скобка после переменной/дроби/закрывающей скобки — добавляем ellipsis
-                        if (prev is FormulaElement.Variable || prev is FormulaElement.Fraction ||
+                        if (prev is FormulaElement.Variable || prev is FormulaElement.Fraction || prev is FormulaElement.Parentheses ||
                             (prev is FormulaElement.Operator && prev.type == OperatorType.CLOSE_PAREN)) {
                             result.add(createEllipsis())
                         }
@@ -249,9 +286,10 @@ fun List<FormulaElement>.normalize(): List<FormulaElement> {
             }
 
             is FormulaElement.Ellipsis -> {
-                // Пропускаем orphaned ellipsis (не после переменной/дроби/закрывающей скобки)
+                // Пропускаем orphaned ellipsis (не после переменной/дроби/скобок)
                 val validPrev = prev is FormulaElement.Variable ||
                                 prev is FormulaElement.Fraction ||
+                                prev is FormulaElement.Parentheses ||
                                 (prev is FormulaElement.Operator && prev.type == OperatorType.CLOSE_PAREN)
                 if (!validPrev) {
                     continue
@@ -260,8 +298,8 @@ fun List<FormulaElement>.normalize(): List<FormulaElement> {
             }
 
             is FormulaElement.Variable -> {
-                // Добавляем ellipsis между двумя переменными/дробями
-                if (prev is FormulaElement.Variable || prev is FormulaElement.Fraction) {
+                // Добавляем ellipsis между двумя переменными/дробями/скобками
+                if (prev is FormulaElement.Variable || prev is FormulaElement.Fraction || prev is FormulaElement.Parentheses) {
                     result.add(createEllipsis())
                 }
                 // Добавляем ellipsis после закрывающей скобки перед переменной
@@ -343,6 +381,15 @@ private fun List<FormulaElement>.insertHorizontal(
             } else {
                 result.add(el)
             }
+        } else if (el is FormulaElement.Parentheses) {
+            // Рекурсивно ищем в скобках
+            val newChildren = el.children.insertHorizontal(element, targetId, side)
+
+            if (newChildren != el.children) {
+                result.add(el.copy(children = newChildren))
+            } else {
+                result.add(el)
+            }
         } else {
             result.add(el)
         }
@@ -383,6 +430,15 @@ private fun List<FormulaElement>.insertVertical(
             } else {
                 result.add(el)
             }
+        } else if (el is FormulaElement.Parentheses) {
+            // Рекурсивно ищем в скобках
+            val newChildren = el.children.insertVertical(element, targetId, side)
+
+            if (newChildren != el.children) {
+                result.add(el.copy(children = newChildren))
+            } else {
+                result.add(el)
+            }
         } else {
             result.add(el)
         }
@@ -405,6 +461,9 @@ fun List<FormulaElement>.updateExponent(targetId: String, exponent: Exponent?): 
                     denominator = element.denominator.updateExponent(targetId, exponent)
                 )
             }
+            element is FormulaElement.Parentheses -> {
+                element.copy(children = element.children.updateExponent(targetId, exponent))
+            }
             else -> element
         }
     }
@@ -423,6 +482,9 @@ fun List<FormulaElement>.replaceEllipsis(targetId: String, operatorType: Operato
                     numerator = element.numerator.replaceEllipsis(targetId, operatorType),
                     denominator = element.denominator.replaceEllipsis(targetId, operatorType)
                 )
+            }
+            element is FormulaElement.Parentheses -> {
+                element.copy(children = element.children.replaceEllipsis(targetId, operatorType))
             }
             else -> element
         }
@@ -564,7 +626,7 @@ fun List<FormulaElement>.appendElements(newElements: List<FormulaElement>): List
 
     // Проверяем, есть ли значимые элементы
     val hasContent = this.any {
-        it is FormulaElement.Variable || it is FormulaElement.Fraction
+        it is FormulaElement.Variable || it is FormulaElement.Fraction || it is FormulaElement.Parentheses
     }
 
     return if (hasContent) {
@@ -573,6 +635,84 @@ fun List<FormulaElement>.appendElements(newElements: List<FormulaElement>): List
     } else {
         // Нет значимых элементов — просто добавляем
         newElements.normalize()
+    }
+}
+
+// ===== Обёртывание в скобки =====
+
+/**
+ * Обернуть элемент по ID в скобки.
+ * Находит элемент, заменяет его на Parentheses(children = [element])
+ */
+fun List<FormulaElement>.wrapInParentheses(targetId: String): List<FormulaElement> {
+    return map { element ->
+        when {
+            element.id == targetId -> {
+                // Нашли элемент — оборачиваем в скобки
+                createParentheses(children = listOf(element.clone()))
+            }
+            element is FormulaElement.Fraction -> {
+                element.copy(
+                    numerator = element.numerator.wrapInParentheses(targetId),
+                    denominator = element.denominator.wrapInParentheses(targetId)
+                )
+            }
+            element is FormulaElement.Parentheses -> {
+                element.copy(children = element.children.wrapInParentheses(targetId))
+            }
+            else -> element
+        }
+    }
+}
+
+/**
+ * Обернуть диапазон элементов в скобки (по индексам).
+ * Используется для выделения нескольких элементов.
+ */
+fun List<FormulaElement>.wrapRangeInParentheses(startIndex: Int, endIndex: Int): List<FormulaElement> {
+    if (startIndex < 0 || endIndex >= this.size || startIndex > endIndex) {
+        return this
+    }
+
+    val result = mutableListOf<FormulaElement>()
+
+    // Элементы до выделения
+    result.addAll(this.subList(0, startIndex))
+
+    // Выделенные элементы — оборачиваем в скобки
+    val selectedElements = this.subList(startIndex, endIndex + 1)
+    result.add(createParentheses(children = selectedElements.map { it.clone() }))
+
+    // Элементы после выделения
+    if (endIndex + 1 < this.size) {
+        result.addAll(this.subList(endIndex + 1, this.size))
+    }
+
+    return result.normalize()
+}
+
+/**
+ * Добавить элемент внутрь скобок.
+ * Находит Parentheses по ID и добавляет element в children.
+ */
+fun List<FormulaElement>.addToParentheses(parenthesesId: String, element: FormulaElement): List<FormulaElement> {
+    return map { el ->
+        when {
+            el.id == parenthesesId && el is FormulaElement.Parentheses -> {
+                // Нашли скобки — добавляем элемент внутрь
+                el.copy(children = (el.children + element).normalize())
+            }
+            el is FormulaElement.Fraction -> {
+                el.copy(
+                    numerator = el.numerator.addToParentheses(parenthesesId, element),
+                    denominator = el.denominator.addToParentheses(parenthesesId, element)
+                )
+            }
+            el is FormulaElement.Parentheses -> {
+                el.copy(children = el.children.addToParentheses(parenthesesId, element))
+            }
+            else -> el
+        }
     }
 }
 
@@ -599,6 +739,10 @@ fun FormulaElement.toLogString(): String {
             val num = numerator.joinToString(" ") { it.toLogString() }
             val den = denominator.joinToString(" ") { it.toLogString() }
             "Frac[$num / $den]"
+        }
+        is FormulaElement.Parentheses -> {
+            val content = children.joinToString(" ") { it.toLogString() }
+            "Paren($content)"
         }
     }
 }

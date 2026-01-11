@@ -84,6 +84,15 @@ sealed class FormulaElement {
         val denominator: List<FormulaElement>
     ) : FormulaElement()
 
+    /**
+     * Скобки — контейнер для группировки элементов
+     * Содержит список элементов внутри скобок
+     */
+    data class Parentheses(
+        override val id: String = generateId(),
+        val children: List<FormulaElement>
+    ) : FormulaElement()
+
     companion object {
         private fun generateId(): String = UUID.randomUUID().toString()
     }

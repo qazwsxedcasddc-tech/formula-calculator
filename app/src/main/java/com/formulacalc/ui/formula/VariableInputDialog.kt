@@ -32,7 +32,10 @@ fun VariableInputDialog(
     currentValue: String,
     onValueChange: (String) -> Unit,
     onDismiss: () -> Unit,
-    onConfirm: (Double?) -> Unit
+    onConfirm: (Double?) -> Unit,
+    isConstant: Boolean = false, // Является ли это константой
+    constantDefaultValue: Double? = null, // Значение константы по умолчанию
+    onWrapInParentheses: (() -> Unit)? = null // Обернуть в скобки
 ) {
     var inputValue by remember { mutableStateOf(currentValue) }
     val focusRequester = remember { FocusRequester() }
@@ -70,8 +73,28 @@ fun VariableInputDialog(
                     text = variableName,
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF3B82F6) // Синий как у переменных
+                    color = if (isConstant) Color(0xFFF59E0B) else Color(0xFF3B82F6) // Жёлтый для констант, синий для переменных
                 )
+
+                // Предупреждение для констант
+                if (isConstant && constantDefaultValue != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFFEF3C7)) // Светло-жёлтый фон
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "⚠️ Это константа. По умолчанию: $constantDefaultValue",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF92400E), // Тёмно-жёлтый текст
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -126,6 +149,24 @@ fun VariableInputDialog(
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
+
+                // Кнопка "Обернуть в скобки" — если доступна
+                if (onWrapInParentheses != null) {
+                    OutlinedButton(
+                        onClick = {
+                            onDismiss()
+                            onWrapInParentheses()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFF10B981)
+                        )
+                    ) {
+                        Text("( ) Обернуть в скобки", fontWeight = FontWeight.Medium)
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
 
                 // Кнопки действий
                 Row(

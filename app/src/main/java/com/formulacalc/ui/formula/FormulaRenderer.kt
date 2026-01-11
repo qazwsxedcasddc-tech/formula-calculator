@@ -53,6 +53,11 @@ object FormulaColors {
 
     val dropIndicatorGreen = Color(0xFF22C55E)
     val dropIndicatorPurple = Color(0xFFA855F7)
+
+    // Скобки
+    val parenthesesBorder = Color(0xFF10B981) // Изумрудный
+    val parenthesesBackground = Color(0x0D10B981)
+    val parenthesesSymbol = Color(0xFF10B981)
 }
 
 /**
@@ -70,7 +75,8 @@ data class ElementBounds(
 data class DragState(
     val isDragging: Boolean = false,
     val draggedElement: FormulaElement? = null,
-    val fingerPosition: Offset = Offset.Zero // Абсолютная позиция пальца на экране
+    val fingerPosition: Offset = Offset.Zero, // Абсолютная позиция пальца на экране
+    val startPosition: Offset = Offset.Zero // Начальная позиция при начале drag
 )
 
 /**
@@ -87,6 +93,10 @@ data class HoverState(
 class ElementBoundsRegistry {
     private val bounds = mutableStateMapOf<String, ElementBounds>()
 
+    // Границы области формулы (для определения "далеко за пределами")
+    var formulaAreaBounds: Rect? = null
+        private set
+
     fun register(id: String, rect: Rect, canBeDropTarget: Boolean = true) {
         bounds[id] = ElementBounds(id, rect, canBeDropTarget)
     }
@@ -95,8 +105,24 @@ class ElementBoundsRegistry {
         bounds.remove(id)
     }
 
+    fun registerFormulaArea(rect: Rect) {
+        formulaAreaBounds = rect
+    }
+
     fun clear() {
         bounds.clear()
+        // formulaAreaBounds не очищаем, т.к. область всегда существует
+    }
+
+    /**
+     * Проверить, находится ли позиция внутри области формулы (с небольшим отступом)
+     */
+    fun isInsideFormulaArea(position: Offset, margin: Float = 50f): Boolean {
+        val area = formulaAreaBounds ?: return true // Если не задано, считаем что внутри
+        return position.x >= area.left - margin &&
+               position.x <= area.right + margin &&
+               position.y >= area.top - margin &&
+               position.y <= area.bottom + margin
     }
 
     /**
@@ -358,6 +384,21 @@ private fun FormulaElementView(
 
             is FormulaElement.Fraction -> FractionView(
                 fraction = element,
+                scale = scale,
+                isDragged = isDraggedElement,
+                dragState = dragState,
+                hoverState = hoverState,
+                onDragStart = onDragStart,
+                onDragEnd = onDragEnd,
+                onDragMove = onDragMove,
+                onEllipsisClick = onEllipsisClick,
+                onVariableClick = onVariableClick,
+                nestingLevel = nestingLevel,
+                variableValues = variableValues
+            )
+
+            is FormulaElement.Parentheses -> ParenthesesView(
+                parentheses = element,
                 scale = scale,
                 isDragged = isDraggedElement,
                 dragState = dragState,
@@ -685,4 +726,131 @@ private fun DropIndicatorHorizontal(
                 RoundedCornerShape(2.dp)
             )
     )
+}
+
+/**
+ * Скобки — контейнер для группировки элементов
+ * Отображает ( содержимое ) с возможностью перетаскивания всей группы
+ */
+@Composable
+private fun ParenthesesView(
+    parentheses: FormulaElement.Parentheses,
+    scale: Float,
+    isDragged: Boolean,
+    dragState: DragState,
+    hoverState: HoverState,
+    onDragStart: (FormulaElement, Offset) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragMove: (Offset) -> Unit,
+    onEllipsisClick: (String) -> Unit,
+    onVariableClick: (String) -> Unit,
+    nestingLevel: Int,
+    variableValues: Map<String, Double> = emptyMap()
+) {
+    val boundsRegistry = LocalElementBoundsRegistry.current
+    val parenFontSize = (32 * scale).sp
+
+    // Позиция элемента на экране для drag
+    var elementPosition by remember { mutableStateOf(Offset.Zero) }
+
+    Row(
+        modifier = Modifier
+            .onGloballyPositioned { coordinates ->
+                val bounds = coordinates.boundsInRoot()
+                boundsRegistry.register(parentheses.id, bounds, canBeDropTarget = true)
+                elementPosition = Offset(bounds.left, bounds.top)
+            }
+            .graphicsLayer {
+                alpha = if (isDragged) 0.4f else 1f
+                scaleX = if (isDragged) 0.95f else 1f
+                scaleY = if (isDragged) 0.95f else 1f
+            }
+            .clip(RoundedCornerShape(8.dp))
+            .background(FormulaColors.parenthesesBackground)
+            .pointerInput(parentheses.id) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val longPress = awaitLongPressOrCancellation(down.id)
+
+                    if (longPress != null) {
+                        // Началось long press — перетаскиваем всю группу скобок
+                        val absolutePosition = elementPosition + longPress.position
+                        onDragStart(parentheses, absolutePosition)
+
+                        // Отслеживаем движение пальца
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+
+                            if (change.changedToUp()) {
+                                onDragEnd()
+                                break
+                            }
+
+                            val newAbsolutePosition = elementPosition + change.position
+                            onDragMove(newAbsolutePosition)
+                            change.consume()
+                        }
+                    }
+                }
+            }
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Открывающая скобка
+        Text(
+            text = "(",
+            color = FormulaColors.parenthesesSymbol,
+            fontSize = parenFontSize,
+            fontWeight = FontWeight.Medium
+        )
+
+        // Содержимое скобок
+        if (parentheses.children.isEmpty()) {
+            // Пустые скобки — показываем placeholder для drop
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .width(40.dp)
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(FormulaColors.parenthesesBorder.copy(alpha = 0.2f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "···",
+                    color = FormulaColors.parenthesesSymbol.copy(alpha = 0.5f),
+                    fontSize = (16 * scale).sp
+                )
+            }
+        } else {
+            // Рендерим содержимое
+            FormulaRenderer(
+                elements = parentheses.children,
+                dragState = dragState,
+                hoverState = hoverState,
+                onDragStart = onDragStart,
+                onDragEnd = onDragEnd,
+                onDragMove = onDragMove,
+                onEllipsisClick = onEllipsisClick,
+                onVariableClick = onVariableClick,
+                nestingLevel = nestingLevel + 1,
+                variableValues = variableValues
+            )
+        }
+
+        // Закрывающая скобка
+        Text(
+            text = ")",
+            color = FormulaColors.parenthesesSymbol,
+            fontSize = parenFontSize,
+            fontWeight = FontWeight.Medium
+        )
+    }
+
+    DisposableEffect(parentheses.id) {
+        onDispose {
+            boundsRegistry.unregister(parentheses.id)
+        }
+    }
 }

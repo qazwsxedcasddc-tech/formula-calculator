@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import android.util.Log
 import com.formulacalc.util.AppLogger
+import com.formulacalc.util.CalculationEntry
+import com.formulacalc.util.CalculationHistory
+import com.formulacalc.util.UndoRedoManager
 
 /**
  * Состояние редактора формул
@@ -35,7 +38,16 @@ data class FormulaEditorState(
     val variableValues: Map<String, Double> = emptyMap(),
     // Результат вычисления
     val calculationResult: Double? = null,
-    val calculationError: String? = null
+    val calculationError: String? = null,
+    // Undo/Redo состояние
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
+    // Snackbar для отмены удаления
+    val showDeleteSnackbar: Boolean = false,
+    val deletedElementName: String = "",
+    // История вычислений
+    val calculationHistory: List<CalculationEntry> = emptyList(),
+    val showHistoryPanel: Boolean = false
 )
 
 /**
@@ -48,6 +60,114 @@ class FormulaEditorViewModel : ViewModel() {
 
     // Registry для отслеживания границ элементов
     val boundsRegistry = ElementBoundsRegistry()
+
+    // Менеджер Undo/Redo
+    private val undoRedoManager = UndoRedoManager()
+
+    // История вычислений
+    private val calculationHistory = CalculationHistory()
+
+    // ===== Undo/Redo =====
+
+    /**
+     * Сохранить состояние перед изменением
+     */
+    private fun saveStateForUndo(actionName: String) {
+        val currentState = _state.value
+        undoRedoManager.saveState(
+            elements = currentState.elements,
+            variableValues = currentState.variableValues,
+            actionName = actionName
+        )
+        updateUndoRedoState()
+    }
+
+    /**
+     * Обновить состояние кнопок undo/redo
+     */
+    private fun updateUndoRedoState() {
+        _state.update {
+            it.copy(
+                canUndo = undoRedoManager.canUndo(),
+                canRedo = undoRedoManager.canRedo()
+            )
+        }
+    }
+
+    /**
+     * Отменить последнее действие
+     */
+    fun undo() {
+        val currentState = _state.value
+        val snapshot = undoRedoManager.undo(
+            currentElements = currentState.elements,
+            currentVariableValues = currentState.variableValues
+        )
+
+        if (snapshot != null) {
+            AppLogger.undoAction(snapshot.actionName)
+            _state.update {
+                it.copy(
+                    elements = snapshot.elements,
+                    variableValues = snapshot.variableValues
+                )
+            }
+            updateUndoRedoState()
+            calculateResult()
+        }
+    }
+
+    /**
+     * Повторить отменённое действие
+     */
+    fun redo() {
+        val currentState = _state.value
+        val snapshot = undoRedoManager.redo(
+            currentElements = currentState.elements,
+            currentVariableValues = currentState.variableValues
+        )
+
+        if (snapshot != null) {
+            AppLogger.redoAction()
+            _state.update {
+                it.copy(
+                    elements = snapshot.elements,
+                    variableValues = snapshot.variableValues
+                )
+            }
+            updateUndoRedoState()
+            calculateResult()
+        }
+    }
+
+    /**
+     * Скрыть snackbar удаления
+     */
+    fun dismissDeleteSnackbar() {
+        _state.update { it.copy(showDeleteSnackbar = false) }
+    }
+
+    /**
+     * Переключить панель истории
+     */
+    fun toggleHistoryPanel() {
+        _state.update { it.copy(showHistoryPanel = !it.showHistoryPanel) }
+    }
+
+    /**
+     * Очистить историю
+     */
+    fun clearHistory() {
+        calculationHistory.clear()
+        _state.update { it.copy(calculationHistory = emptyList()) }
+    }
+
+    /**
+     * Обновить список истории в state
+     */
+    private fun updateHistoryState() {
+        _state.update { it.copy(calculationHistory = calculationHistory.getAll()) }
+    }
 
     // ===== Drag & Drop =====
 
@@ -66,7 +186,8 @@ class FormulaEditorViewModel : ViewModel() {
                 dragState = DragState(
                     isDragging = true,
                     draggedElement = element,
-                    fingerPosition = fingerPosition
+                    fingerPosition = fingerPosition,
+                    startPosition = fingerPosition // Запоминаем начальную позицию
                 )
             )
         }
@@ -115,14 +236,20 @@ class FormulaEditorViewModel : ViewModel() {
         val draggedElement = currentState.dragState.draggedElement
         val targetId = currentState.hoverState.targetId
         val side = currentState.hoverState.side
+        val fingerPosition = currentState.dragState.fingerPosition
+        val startPosition = currentState.dragState.startPosition
 
         Log.d("DragDrop", "═══════════════════════════════════════")
         Log.d("DragDrop", "🔴 DRAG END")
         Log.d("DragDrop", "   Dragged: ${draggedElement?.toLogString() ?: "null"}")
         Log.d("DragDrop", "   Target ID: $targetId")
         Log.d("DragDrop", "   Side: $side")
+        Log.d("DragDrop", "   Finger pos: $fingerPosition, Start pos: $startPosition")
 
         if (draggedElement != null && targetId != null && side != null && draggedElement.id != targetId) {
+            // Успешный drop на цель — сохраняем для undo
+            saveStateForUndo("Перемещение ${draggedElement.toLogString()}")
+
             val targetElement = currentState.elements.findById(targetId)
             Log.d("DragDrop", "   Target Element: ${targetElement?.toLogString() ?: "NOT FOUND"}")
             Log.d("DragDrop", "   BEFORE: ${currentState.elements.toLogString()}")
@@ -147,11 +274,62 @@ class FormulaEditorViewModel : ViewModel() {
                     hoverState = HoverState()
                 )
             }
+        } else if (draggedElement != null) {
+            // Нет valid target — проверяем, куда отпустили
+            val isInsideFormulaArea = boundsRegistry.isInsideFormulaArea(fingerPosition, margin = 100f)
+
+            Log.d("DragDrop", "   ❌ No valid target")
+            Log.d("DragDrop", "   Inside formula area: $isInsideFormulaArea")
+            AppLogger.debugDropPosition(fingerPosition.x.toInt(), fingerPosition.y.toInt(), isInsideFormulaArea)
+
+            if (isInsideFormulaArea) {
+                // Отпустили внутри области формулы — возвращаем на место (ничего не делаем)
+                Log.d("DragDrop", "   → Returning to original position")
+                Log.d("DragDrop", "═══════════════════════════════════════")
+                AppLogger.userDragEnd(draggedElement.toLogString(), null, "RETURN_TO_PLACE")
+
+                _state.update {
+                    it.copy(
+                        dragState = DragState(),
+                        hoverState = HoverState()
+                    )
+                }
+            } else {
+                // Отпустили далеко за пределами — удаляем элемент
+                // Сохраняем для undo
+                saveStateForUndo("Удаление ${draggedElement.toLogString()}")
+
+                Log.d("DragDrop", "   → DELETING element (dropped outside)")
+                Log.d("DragDrop", "   BEFORE: ${currentState.elements.toLogString()}")
+
+                val newElements = currentState.elements.removeById(draggedElement.id)
+                Log.d("DragDrop", "   AFTER: ${newElements.toLogString()}")
+                Log.d("DragDrop", "═══════════════════════════════════════")
+
+                AppLogger.userDragEnd(draggedElement.toLogString(), null, "DELETED")
+                AppLogger.formulaChanged(newElements.toLogString())
+
+                // Получаем имя для snackbar
+                val elementName = when (draggedElement) {
+                    is FormulaElement.Variable -> draggedElement.displayValue
+                    is FormulaElement.Fraction -> "дробь"
+                    is FormulaElement.Parentheses -> "скобки"
+                    else -> "элемент"
+                }
+
+                _state.update {
+                    it.copy(
+                        elements = newElements,
+                        dragState = DragState(),
+                        hoverState = HoverState(),
+                        showDeleteSnackbar = true,
+                        deletedElementName = elementName
+                    )
+                }
+            }
         } else {
-            Log.d("DragDrop", "   ❌ Drop cancelled (no valid target)")
+            Log.d("DragDrop", "   ❌ No dragged element")
             Log.d("DragDrop", "═══════════════════════════════════════")
-            AppLogger.userDragEnd(draggedElement?.toLogString() ?: "?", null, null)
-            // Просто сбрасываем drag state
             _state.update {
                 it.copy(
                     dragState = DragState(),
@@ -165,8 +343,10 @@ class FormulaEditorViewModel : ViewModel() {
      * Сброс формулы к начальному состоянию
      */
     fun reset() {
+        saveStateForUndo("Сброс формулы")
         AppLogger.userReset()
         boundsRegistry.clear()
+        undoRedoManager.clear()
         _state.update {
             FormulaEditorState()
         }
@@ -193,6 +373,7 @@ class FormulaEditorViewModel : ViewModel() {
      */
     fun selectOperator(type: OperatorType) {
         val targetId = _state.value.operatorMenuTargetId ?: return
+        saveStateForUndo("Выбор оператора ${type.name}")
         AppLogger.userSelectOperator(type.name, targetId)
 
         _state.update {
@@ -311,6 +492,7 @@ class FormulaEditorViewModel : ViewModel() {
      * - Деление отображается как дробь
      */
     fun dropPreset(preset: PresetFormula) {
+        saveStateForUndo("Добавление ${preset.name}")
         Log.d("FormulaEditor", "dropPreset called: ${preset.name}")
         AppLogger.userDropPreset(preset.name)
 
@@ -368,6 +550,7 @@ class FormulaEditorViewModel : ViewModel() {
      */
     fun setVariableValue(variableId: String, value: Double?) {
         val varName = _state.value.variableInputName
+        saveStateForUndo("Значение $varName = $value")
         AppLogger.userInputValue(varName, variableId, value)
 
         _state.update { state ->
@@ -442,10 +625,18 @@ class FormulaEditorViewModel : ViewModel() {
             val result = evaluateSimple(formulaString)
             AppLogger.calculationResult(result, formulaString)
 
+            // Сохраняем в историю
+            calculationHistory.addEntry(
+                formulaDescription = state.elements.toLogString(),
+                result = result,
+                variables = state.variableValues
+            )
+
             _state.update {
                 it.copy(
                     calculationResult = result,
-                    calculationError = null
+                    calculationError = null,
+                    calculationHistory = calculationHistory.getAll()
                 )
             }
         } catch (e: Exception) {
@@ -477,10 +668,28 @@ class FormulaEditorViewModel : ViewModel() {
                     result.addAll(collectVariableIds(element.numerator))
                     result.addAll(collectVariableIds(element.denominator))
                 }
+                is FormulaElement.Parentheses -> {
+                    result.addAll(collectVariableIds(element.children))
+                }
                 else -> {}
             }
         }
         return result
+    }
+
+    // ===== Скобки =====
+
+    /**
+     * Обернуть элемент в скобки
+     */
+    fun wrapInParentheses(targetId: String) {
+        saveStateForUndo("Обернуть в скобки")
+        AppLogger.log("ACTION", "Обёртывание в скобки: $targetId")
+
+        _state.update {
+            it.copy(elements = it.elements.wrapInParentheses(targetId))
+        }
+        AppLogger.formulaChanged(_state.value.elements.toLogString())
     }
 
     /**
@@ -528,6 +737,11 @@ class FormulaEditorViewModel : ViewModel() {
                     sb.append(elementsToString(element.numerator, values))
                     sb.append(")/(")
                     sb.append(elementsToString(element.denominator, values))
+                    sb.append(")")
+                }
+                is FormulaElement.Parentheses -> {
+                    sb.append("(")
+                    sb.append(elementsToString(element.children, values))
                     sb.append(")")
                 }
                 is FormulaElement.Equals -> {} // Пропускаем
