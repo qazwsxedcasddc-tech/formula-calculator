@@ -45,11 +45,23 @@ fun createParentheses(
 // ===== Начальная пустая формула =====
 
 /**
- * Начальная пустая формула — пустой список.
- * Пользователь перетаскивает формулы из нижней панели.
+ * Начальная тестовая формула со скобками и операторами.
+ * Для тестирования новых функций: клик на скобки, замена оператора.
  */
 fun getInitialGravityFormula(): List<FormulaElement> {
-    return emptyList()
+    return listOf(
+        createVariable("a"),
+        createOperator(OperatorType.PLUS),
+        FormulaElement.Parentheses(
+            children = listOf(
+                createVariable("b"),
+                createOperator(OperatorType.MULTIPLY),
+                createVariable("c")
+            )
+        ),
+        createOperator(OperatorType.MINUS),
+        createVariable("d")
+    )
 }
 
 /**
