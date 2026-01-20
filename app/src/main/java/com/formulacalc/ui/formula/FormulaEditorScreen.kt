@@ -206,6 +206,7 @@ fun FormulaEditorScreen(
                     onDragMove = { viewModel.onDragMove(it) },
                     onEllipsisClick = { viewModel.onEllipsisClick(it) },
                     onVariableClick = { viewModel.onVariableClickForValue(it) }, // Для ввода значений
+                    onParenthesesClick = { viewModel.onParenthesesClick(it) }, // Для скобок
                     onPresetDrop = { preset -> viewModel.dropPreset(preset) },
                     boundsRegistry = viewModel.boundsRegistry,
                     modifier = Modifier.weight(1f)
@@ -363,6 +364,15 @@ fun FormulaEditorScreen(
                     onWrapInParentheses = {
                         viewModel.wrapInParentheses(targetId)
                     }
+                )
+            }
+
+            // Диалог для скобок
+            val parenTargetId = state.parenthesesDialogTargetId
+            if (state.showParenthesesDialog && parenTargetId != null) {
+                ParenthesesDialog(
+                    onDismiss = { viewModel.dismissParenthesesDialog() },
+                    onUnwrap = { viewModel.unwrapParentheses(parenTargetId) }
                 )
             }
 
@@ -615,6 +625,7 @@ private fun FormulaArea(
     onDragMove: (androidx.compose.ui.geometry.Offset) -> Unit,
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
+    onParenthesesClick: (String) -> Unit,
     onPresetDrop: (PresetFormula) -> Unit,
     boundsRegistry: ElementBoundsRegistry,
     modifier: Modifier = Modifier
@@ -696,6 +707,7 @@ private fun FormulaArea(
                     onDragMove = onDragMove,
                     onEllipsisClick = onEllipsisClick,
                     onVariableClick = onVariableClick,
+                    onParenthesesClick = onParenthesesClick,
                     variableValues = variableValues
                 )
             }

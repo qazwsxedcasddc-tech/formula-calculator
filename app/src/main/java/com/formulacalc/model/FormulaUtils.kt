@@ -692,6 +692,35 @@ fun List<FormulaElement>.wrapRangeInParentheses(startIndex: Int, endIndex: Int):
 }
 
 /**
+ * Развернуть скобки — убрать скобки, оставив содержимое.
+ * Находит Parentheses по ID и заменяет их на children.
+ */
+fun List<FormulaElement>.unwrapParentheses(targetId: String): List<FormulaElement> {
+    val result = mutableListOf<FormulaElement>()
+
+    for (element in this) {
+        when {
+            element.id == targetId && element is FormulaElement.Parentheses -> {
+                // Нашли скобки — заменяем на содержимое
+                result.addAll(element.children.map { it.clone() })
+            }
+            element is FormulaElement.Fraction -> {
+                result.add(element.copy(
+                    numerator = element.numerator.unwrapParentheses(targetId),
+                    denominator = element.denominator.unwrapParentheses(targetId)
+                ))
+            }
+            element is FormulaElement.Parentheses -> {
+                result.add(element.copy(children = element.children.unwrapParentheses(targetId)))
+            }
+            else -> result.add(element)
+        }
+    }
+
+    return result.normalize()
+}
+
+/**
  * Добавить элемент внутрь скобок.
  * Находит Parentheses по ID и добавляет element в children.
  */

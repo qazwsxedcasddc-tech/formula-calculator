@@ -47,7 +47,10 @@ data class FormulaEditorState(
     val deletedElementName: String = "",
     // История вычислений
     val calculationHistory: List<CalculationEntry> = emptyList(),
-    val showHistoryPanel: Boolean = false
+    val showHistoryPanel: Boolean = false,
+    // Диалог для скобок
+    val showParenthesesDialog: Boolean = false,
+    val parenthesesDialogTargetId: String? = null
 )
 
 /**
@@ -690,6 +693,45 @@ class FormulaEditorViewModel : ViewModel() {
             it.copy(elements = it.elements.wrapInParentheses(targetId))
         }
         AppLogger.formulaChanged(_state.value.elements.toLogString())
+    }
+
+    /**
+     * Развернуть скобки — убрать скобки, оставив содержимое
+     */
+    fun unwrapParentheses(targetId: String) {
+        saveStateForUndo("Развернуть скобки")
+        AppLogger.log("ACTION", "Разворачивание скобок: $targetId")
+
+        _state.update {
+            it.copy(elements = it.elements.unwrapParentheses(targetId))
+        }
+        AppLogger.formulaChanged(_state.value.elements.toLogString())
+    }
+
+    /**
+     * Клик на скобки — открыть диалог
+     */
+    fun onParenthesesClick(id: String) {
+        AppLogger.userTap("скобки", "id=$id")
+        AppLogger.dialogOpened("ParenthesesDialog", "для $id")
+        _state.update {
+            it.copy(
+                showParenthesesDialog = true,
+                parenthesesDialogTargetId = id
+            )
+        }
+    }
+
+    /**
+     * Закрыть диалог скобок
+     */
+    fun dismissParenthesesDialog() {
+        _state.update {
+            it.copy(
+                showParenthesesDialog = false,
+                parenthesesDialogTargetId = null
+            )
+        }
     }
 
     /**

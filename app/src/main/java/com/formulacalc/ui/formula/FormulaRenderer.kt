@@ -196,6 +196,7 @@ fun FormulaRenderer(
     onDragMove: (Offset) -> Unit = {}, // Теперь передаём абсолютную позицию
     onEllipsisClick: (String) -> Unit = {},
     onVariableClick: (String) -> Unit = {},
+    onParenthesesClick: (String) -> Unit = {}, // Клик на скобки
     nestingLevel: Int = 0,
     maxWidth: androidx.compose.ui.unit.Dp? = null,  // Для авто-масштабирования
     maxHeight: androidx.compose.ui.unit.Dp? = null,
@@ -259,6 +260,7 @@ fun FormulaRenderer(
                         onDragMove = onDragMove,
                         onEllipsisClick = onEllipsisClick,
                         onVariableClick = onVariableClick,
+                        onParenthesesClick = onParenthesesClick,
                         nestingLevel = nestingLevel,
                         variableValues = variableValues
                     )
@@ -283,6 +285,7 @@ fun FormulaRenderer(
                     onDragMove = onDragMove,
                     onEllipsisClick = onEllipsisClick,
                     onVariableClick = onVariableClick,
+                    onParenthesesClick = onParenthesesClick,
                     nestingLevel = nestingLevel,
                     variableValues = variableValues
                 )
@@ -305,6 +308,7 @@ private fun FormulaElementView(
     onDragMove: (Offset) -> Unit,
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
+    onParenthesesClick: (String) -> Unit,
     variableValues: Map<String, Double> = emptyMap(),
     nestingLevel: Int
 ) {
@@ -393,6 +397,7 @@ private fun FormulaElementView(
                 onDragMove = onDragMove,
                 onEllipsisClick = onEllipsisClick,
                 onVariableClick = onVariableClick,
+                onParenthesesClick = onParenthesesClick,
                 nestingLevel = nestingLevel,
                 variableValues = variableValues
             )
@@ -408,6 +413,8 @@ private fun FormulaElementView(
                 onDragMove = onDragMove,
                 onEllipsisClick = onEllipsisClick,
                 onVariableClick = onVariableClick,
+                onParenthesesClick = onParenthesesClick,
+                onClick = { onParenthesesClick(element.id) },
                 nestingLevel = nestingLevel,
                 variableValues = variableValues
             )
@@ -614,6 +621,7 @@ private fun FractionView(
     onDragMove: (Offset) -> Unit,
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
+    onParenthesesClick: (String) -> Unit,
     nestingLevel: Int,
     variableValues: Map<String, Double> = emptyMap()
 ) {
@@ -649,6 +657,7 @@ private fun FractionView(
             onDragMove = onDragMove,
             onEllipsisClick = onEllipsisClick,
             onVariableClick = onVariableClick,
+            onParenthesesClick = onParenthesesClick,
             nestingLevel = nestingLevel + 1,
             variableValues = variableValues
         )
@@ -676,6 +685,7 @@ private fun FractionView(
             onDragMove = onDragMove,
             onEllipsisClick = onEllipsisClick,
             onVariableClick = onVariableClick,
+            onParenthesesClick = onParenthesesClick,
             nestingLevel = nestingLevel + 1,
             variableValues = variableValues
         )
@@ -731,6 +741,7 @@ private fun DropIndicatorHorizontal(
 /**
  * Скобки — контейнер для группировки элементов
  * Отображает ( содержимое ) с возможностью перетаскивания всей группы
+ * Короткий тап открывает диалог для разворачивания скобок
  */
 @Composable
 private fun ParenthesesView(
@@ -744,6 +755,8 @@ private fun ParenthesesView(
     onDragMove: (Offset) -> Unit,
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
+    onParenthesesClick: (String) -> Unit,
+    onClick: () -> Unit, // Короткий тап на скобки
     nestingLevel: Int,
     variableValues: Map<String, Double> = emptyMap()
 ) {
@@ -791,6 +804,9 @@ private fun ParenthesesView(
                             onDragMove(newAbsolutePosition)
                             change.consume()
                         }
+                    } else {
+                        // Короткий тап — открываем диалог для действий со скобками
+                        onClick()
                     }
                 }
             }
@@ -834,6 +850,7 @@ private fun ParenthesesView(
                 onDragMove = onDragMove,
                 onEllipsisClick = onEllipsisClick,
                 onVariableClick = onVariableClick,
+                onParenthesesClick = onParenthesesClick,
                 nestingLevel = nestingLevel + 1,
                 variableValues = variableValues
             )
