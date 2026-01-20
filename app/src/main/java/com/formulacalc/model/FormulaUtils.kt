@@ -693,13 +693,13 @@ fun List<FormulaElement>.wrapRangeInParentheses(startIndex: Int, endIndex: Int):
 
 /**
  * Заменить оператор на другой тип.
- * Находит Operator по ID и меняет его symbol.
+ * Находит Operator по ID и меняет его type.
  */
 fun List<FormulaElement>.replaceOperator(targetId: String, newType: OperatorType): List<FormulaElement> {
     return map { element ->
         when {
             element.id == targetId && element is FormulaElement.Operator -> {
-                element.copy(symbol = newType.symbol)
+                element.copy(type = newType)
             }
             element is FormulaElement.Fraction -> {
                 element.copy(
