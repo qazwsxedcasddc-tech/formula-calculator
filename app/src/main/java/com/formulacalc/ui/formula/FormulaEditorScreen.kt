@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -207,6 +208,7 @@ fun FormulaEditorScreen(
                     onEllipsisClick = { viewModel.onEllipsisClick(it) },
                     onVariableClick = { viewModel.onVariableClickForValue(it) }, // Для ввода значений
                     onParenthesesClick = { viewModel.onParenthesesClick(it) }, // Для скобок
+                    onOperatorClick = { viewModel.onOperatorClick(it) }, // Для изменения оператора
                     onPresetDrop = { preset -> viewModel.dropPreset(preset) },
                     boundsRegistry = viewModel.boundsRegistry,
                     modifier = Modifier.weight(1f)
@@ -325,10 +327,16 @@ fun FormulaEditorScreen(
                 }
             }
 
-            // Меню оператора
+            // Меню оператора (для вставки нового или замены существующего)
             if (state.showOperatorMenu) {
                 OperatorMenu(
-                    onSelect = { viewModel.selectOperator(it) },
+                    onSelect = {
+                        if (state.isOperatorReplaceMode) {
+                            viewModel.replaceOperator(it)
+                        } else {
+                            viewModel.selectOperator(it)
+                        }
+                    },
                     onDismiss = { viewModel.dismissOperatorMenu() }
                 )
             }
@@ -626,12 +634,29 @@ private fun FormulaArea(
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
     onParenthesesClick: (String) -> Unit,
+    onOperatorClick: (String) -> Unit,
     onPresetDrop: (PresetFormula) -> Unit,
     boundsRegistry: ElementBoundsRegistry,
     modifier: Modifier = Modifier
 ) {
     var isDragOver by remember { mutableStateOf(false) }
-    val scrollState = rememberScrollState()
+
+    // Для автомасштабирования
+    var containerWidth by remember { mutableStateOf(0f) }
+    var containerHeight by remember { mutableStateOf(0f) }
+    var contentWidth by remember { mutableStateOf(0f) }
+    var contentHeight by remember { mutableStateOf(0f) }
+
+    // Вычисляем масштаб чтобы формула поместилась целиком
+    val autoScale = remember(containerWidth, containerHeight, contentWidth, contentHeight) {
+        if (contentWidth > 0 && contentHeight > 0 && containerWidth > 0 && containerHeight > 0) {
+            val scaleX = (containerWidth - 32f) / contentWidth // 32 = padding
+            val scaleY = (containerHeight - 32f) / contentHeight
+            minOf(scaleX, scaleY, 1f).coerceIn(0.3f, 1f)
+        } else {
+            1f
+        }
+    }
 
     // Анимация цвета границы при drag over
     val borderColor by animateColorAsState(
@@ -644,10 +669,6 @@ private fun FormulaArea(
     )
 
     val borderWidth = if (isDragOver) 2.dp else 1.dp
-
-    // Проверяем, можно ли скроллить
-    val canScrollLeft = scrollState.value > 0
-    val canScrollRight = scrollState.value < scrollState.maxValue
 
     Box(
         modifier = modifier
@@ -679,11 +700,14 @@ private fun FormulaArea(
                 }
             )
     ) {
-        // Контент с горизонтальным скроллом
+        // Контент с автомасштабированием
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .horizontalScroll(scrollState)
+                .onGloballyPositioned { coordinates ->
+                    containerWidth = coordinates.size.width.toFloat()
+                    containerHeight = coordinates.size.height.toFloat()
+                }
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -698,54 +722,44 @@ private fun FormulaArea(
                     }
                 )
             } else {
-                FormulaRenderer(
-                    elements = elements,
-                    dragState = dragState,
-                    hoverState = hoverState,
-                    onDragStart = onDragStart,
-                    onDragEnd = onDragEnd,
-                    onDragMove = onDragMove,
-                    onEllipsisClick = onEllipsisClick,
-                    onVariableClick = onVariableClick,
-                    onParenthesesClick = onParenthesesClick,
-                    variableValues = variableValues
-                )
+                // Применяем автомасштабирование
+                Box(
+                    modifier = Modifier
+                        .onGloballyPositioned { coordinates ->
+                            contentWidth = coordinates.size.width.toFloat()
+                            contentHeight = coordinates.size.height.toFloat()
+                        }
+                        .graphicsLayer {
+                            scaleX = autoScale
+                            scaleY = autoScale
+                        }
+                ) {
+                    FormulaRenderer(
+                        elements = elements,
+                        dragState = dragState,
+                        hoverState = hoverState,
+                        onDragStart = onDragStart,
+                        onDragEnd = onDragEnd,
+                        onDragMove = onDragMove,
+                        onEllipsisClick = onEllipsisClick,
+                        onVariableClick = onVariableClick,
+                        onParenthesesClick = onParenthesesClick,
+                        onOperatorClick = onOperatorClick,
+                        variableValues = variableValues
+                    )
+                }
             }
         }
 
-        // Градиент слева — показывает что можно скроллить влево
-        if (canScrollLeft) {
-            Box(
+        // Индикатор масштаба (показываем если формула уменьшена)
+        if (autoScale < 0.95f) {
+            Text(
+                text = "${(autoScale * 100).toInt()}%",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .width(24.dp)
-                    .fillMaxHeight()
-                    .background(
-                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.surface,
-                                Color.Transparent
-                            )
-                        )
-                    )
-            )
-        }
-
-        // Градиент справа — показывает что можно скроллить вправо
-        if (canScrollRight) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .width(24.dp)
-                    .fillMaxHeight()
-                    .background(
-                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                MaterialTheme.colorScheme.surface
-                            )
-                        )
-                    )
+                    .align(Alignment.BottomEnd)
+                    .padding(8.dp)
             )
         }
     }

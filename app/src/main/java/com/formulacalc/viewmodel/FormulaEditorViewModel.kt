@@ -27,6 +27,7 @@ data class FormulaEditorState(
     val hoverState: HoverState = HoverState(),
     val showOperatorMenu: Boolean = false,
     val operatorMenuTargetId: String? = null,
+    val isOperatorReplaceMode: Boolean = false, // true если заменяем существующий оператор
     val showExponentKeyboard: Boolean = false,
     val exponentKeyboardTargetId: String? = null,
     val currentExponent: Exponent? = null,
@@ -396,9 +397,44 @@ class FormulaEditorViewModel : ViewModel() {
         _state.update {
             it.copy(
                 showOperatorMenu = false,
-                operatorMenuTargetId = null
+                operatorMenuTargetId = null,
+                isOperatorReplaceMode = false
             )
         }
+    }
+
+    /**
+     * Клик на существующий оператор — показать меню для замены
+     */
+    fun onOperatorClick(id: String) {
+        AppLogger.userTap("operator", "id=$id")
+        AppLogger.dialogOpened("OperatorMenu", "замена для $id")
+        _state.update {
+            it.copy(
+                showOperatorMenu = true,
+                operatorMenuTargetId = id,
+                isOperatorReplaceMode = true
+            )
+        }
+    }
+
+    /**
+     * Выбор оператора для замены существующего
+     */
+    fun replaceOperator(type: OperatorType) {
+        val targetId = _state.value.operatorMenuTargetId ?: return
+        saveStateForUndo("Замена оператора на ${type.name}")
+        AppLogger.log("ACTION", "Замена оператора $targetId на ${type.name}")
+
+        _state.update {
+            it.copy(
+                elements = it.elements.replaceOperator(targetId, type),
+                showOperatorMenu = false,
+                operatorMenuTargetId = null,
+                isOperatorReplaceMode = false
+            )
+        }
+        AppLogger.formulaChanged(_state.value.elements.toLogString())
     }
 
     // ===== Клавиатура экспоненты =====

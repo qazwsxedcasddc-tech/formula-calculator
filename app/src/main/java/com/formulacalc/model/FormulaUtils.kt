@@ -692,6 +692,30 @@ fun List<FormulaElement>.wrapRangeInParentheses(startIndex: Int, endIndex: Int):
 }
 
 /**
+ * Заменить оператор на другой тип.
+ * Находит Operator по ID и меняет его symbol.
+ */
+fun List<FormulaElement>.replaceOperator(targetId: String, newType: OperatorType): List<FormulaElement> {
+    return map { element ->
+        when {
+            element.id == targetId && element is FormulaElement.Operator -> {
+                element.copy(symbol = newType.symbol)
+            }
+            element is FormulaElement.Fraction -> {
+                element.copy(
+                    numerator = element.numerator.replaceOperator(targetId, newType),
+                    denominator = element.denominator.replaceOperator(targetId, newType)
+                )
+            }
+            element is FormulaElement.Parentheses -> {
+                element.copy(children = element.children.replaceOperator(targetId, newType))
+            }
+            else -> element
+        }
+    }
+}
+
+/**
  * Развернуть скобки — убрать скобки, оставив содержимое.
  * Находит Parentheses по ID и заменяет их на children.
  */

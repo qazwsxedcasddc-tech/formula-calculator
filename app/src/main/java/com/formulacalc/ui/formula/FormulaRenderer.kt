@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -197,6 +198,7 @@ fun FormulaRenderer(
     onEllipsisClick: (String) -> Unit = {},
     onVariableClick: (String) -> Unit = {},
     onParenthesesClick: (String) -> Unit = {}, // Клик на скобки
+    onOperatorClick: (String) -> Unit = {}, // Клик на оператор для изменения
     nestingLevel: Int = 0,
     maxWidth: androidx.compose.ui.unit.Dp? = null,  // Для авто-масштабирования
     maxHeight: androidx.compose.ui.unit.Dp? = null,
@@ -261,6 +263,7 @@ fun FormulaRenderer(
                         onEllipsisClick = onEllipsisClick,
                         onVariableClick = onVariableClick,
                         onParenthesesClick = onParenthesesClick,
+                        onOperatorClick = onOperatorClick,
                         nestingLevel = nestingLevel,
                         variableValues = variableValues
                     )
@@ -286,6 +289,7 @@ fun FormulaRenderer(
                     onEllipsisClick = onEllipsisClick,
                     onVariableClick = onVariableClick,
                     onParenthesesClick = onParenthesesClick,
+                    onOperatorClick = onOperatorClick,
                     nestingLevel = nestingLevel,
                     variableValues = variableValues
                 )
@@ -309,6 +313,7 @@ private fun FormulaElementView(
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
     onParenthesesClick: (String) -> Unit,
+    onOperatorClick: (String) -> Unit,
     variableValues: Map<String, Double> = emptyMap(),
     nestingLevel: Int
 ) {
@@ -376,7 +381,8 @@ private fun FormulaElementView(
 
             is FormulaElement.Operator -> OperatorView(
                 operator = element,
-                scale = scale
+                scale = scale,
+                onClick = { onOperatorClick(element.id) }
             )
 
             is FormulaElement.Equals -> EqualsView(scale = scale)
@@ -398,6 +404,7 @@ private fun FormulaElementView(
                 onEllipsisClick = onEllipsisClick,
                 onVariableClick = onVariableClick,
                 onParenthesesClick = onParenthesesClick,
+                onOperatorClick = onOperatorClick,
                 nestingLevel = nestingLevel,
                 variableValues = variableValues
             )
@@ -414,6 +421,7 @@ private fun FormulaElementView(
                 onEllipsisClick = onEllipsisClick,
                 onVariableClick = onVariableClick,
                 onParenthesesClick = onParenthesesClick,
+                onOperatorClick = onOperatorClick,
                 onClick = { onParenthesesClick(element.id) },
                 nestingLevel = nestingLevel,
                 variableValues = variableValues
@@ -548,19 +556,23 @@ private fun DraggableVariableView(
 }
 
 /**
- * Оператор
+ * Оператор — кликабельный для изменения
  */
 @Composable
 private fun OperatorView(
     operator: FormulaElement.Operator,
-    scale: Float
+    scale: Float,
+    onClick: () -> Unit = {}
 ) {
     Text(
         text = operator.symbol,
         color = FormulaColors.operatorColor,
         fontSize = (28 * scale).sp,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier.padding(horizontal = 4.dp)
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp, vertical = 4.dp)
     )
 }
 
@@ -622,6 +634,7 @@ private fun FractionView(
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
     onParenthesesClick: (String) -> Unit,
+    onOperatorClick: (String) -> Unit,
     nestingLevel: Int,
     variableValues: Map<String, Double> = emptyMap()
 ) {
@@ -658,6 +671,7 @@ private fun FractionView(
             onEllipsisClick = onEllipsisClick,
             onVariableClick = onVariableClick,
             onParenthesesClick = onParenthesesClick,
+            onOperatorClick = onOperatorClick,
             nestingLevel = nestingLevel + 1,
             variableValues = variableValues
         )
@@ -686,6 +700,7 @@ private fun FractionView(
             onEllipsisClick = onEllipsisClick,
             onVariableClick = onVariableClick,
             onParenthesesClick = onParenthesesClick,
+            onOperatorClick = onOperatorClick,
             nestingLevel = nestingLevel + 1,
             variableValues = variableValues
         )
@@ -756,6 +771,7 @@ private fun ParenthesesView(
     onEllipsisClick: (String) -> Unit,
     onVariableClick: (String) -> Unit,
     onParenthesesClick: (String) -> Unit,
+    onOperatorClick: (String) -> Unit,
     onClick: () -> Unit, // Короткий тап на скобки
     nestingLevel: Int,
     variableValues: Map<String, Double> = emptyMap()
@@ -781,15 +797,25 @@ private fun ParenthesesView(
             .clip(RoundedCornerShape(8.dp))
             .background(FormulaColors.parenthesesBackground)
             .pointerInput(parentheses.id) {
+                detectTapGestures(
+                    onTap = {
+                        // Короткий тап — открываем диалог для действий со скобками
+                        onClick()
+                    },
+                    onLongPress = { offset ->
+                        // Long press — начинаем drag
+                        val absolutePosition = elementPosition + offset
+                        onDragStart(parentheses, absolutePosition)
+                    }
+                )
+            }
+            .pointerInput(parentheses.id) {
+                // Отслеживаем движение после начала drag
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val longPress = awaitLongPressOrCancellation(down.id)
 
                     if (longPress != null) {
-                        // Началось long press — перетаскиваем всю группу скобок
-                        val absolutePosition = elementPosition + longPress.position
-                        onDragStart(parentheses, absolutePosition)
-
                         // Отслеживаем движение пальца
                         while (true) {
                             val event = awaitPointerEvent()
@@ -804,9 +830,6 @@ private fun ParenthesesView(
                             onDragMove(newAbsolutePosition)
                             change.consume()
                         }
-                    } else {
-                        // Короткий тап — открываем диалог для действий со скобками
-                        onClick()
                     }
                 }
             }
@@ -851,6 +874,7 @@ private fun ParenthesesView(
                 onEllipsisClick = onEllipsisClick,
                 onVariableClick = onVariableClick,
                 onParenthesesClick = onParenthesesClick,
+                onOperatorClick = onOperatorClick,
                 nestingLevel = nestingLevel + 1,
                 variableValues = variableValues
             )
