@@ -6,7 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.formulacalc.model.FormulaToken
 import com.formulacalc.model.PresetFormula
-import com.formulacalc.ui.tabs.CombinedCalculatorTab
+import com.formulacalc.ui.tabs.ClassicCalculatorTab
 import com.formulacalc.ui.tabs.CombinedFormulasTab
 import com.formulacalc.viewmodel.TabIndex
 
@@ -48,7 +48,7 @@ fun InputPanel(
     ) { tab ->
         when (tab) {
             TabIndex.CALCULATOR -> {
-                CombinedCalculatorTab(
+                ClassicCalculatorTab(
                     onDigitClick = onDigitClick,
                     onDecimalClick = onDecimalClick,
                     onClearClick = onClearClick,
