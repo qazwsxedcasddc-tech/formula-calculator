@@ -68,7 +68,7 @@ fun CombinedFormulasTab(
             }
         }
 
-        HorizontalDivider(
+        Divider(
             modifier = Modifier.padding(vertical = 4.dp),
             color = MaterialTheme.colorScheme.outlineVariant
         )
