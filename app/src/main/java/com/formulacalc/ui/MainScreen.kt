@@ -10,6 +10,7 @@ import com.formulacalc.model.FormulaToken
 import com.formulacalc.model.OperatorType
 import com.formulacalc.ui.formula.FormulaEditorScreen
 import com.formulacalc.viewmodel.FormulaEditorViewModel
+import com.formulacalc.viewmodel.CalculatorLayout
 import com.formulacalc.viewmodel.FormulaViewModel
 import com.formulacalc.viewmodel.TabIndex
 
@@ -47,16 +48,19 @@ fun MainScreen(
                         .weight(0.45f)
                 )
 
-                // ===== Зона B: Вкладки режимов =====
-                TabsRow(
-                    selectedTab = uiState.selectedTab,
-                    onTabSelected = { viewModel.selectTab(it) },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // ===== Зона B: Вкладки режимов (только для CLASSIC) =====
+                if (uiState.calculatorLayout == CalculatorLayout.CLASSIC) {
+                    TabsRow(
+                        selectedTab = uiState.selectedTab,
+                        onTabSelected = { viewModel.selectTab(it) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
 
                 // ===== Зона C: Панель ввода =====
                 InputPanel(
                     selectedTab = uiState.selectedTab,
+                    calculatorLayout = uiState.calculatorLayout,
                     onTokenClick = { token ->
                         // Добавляем элемент в редактор формул
                         when (token) {

@@ -20,6 +20,15 @@ enum class TabIndex(val index: Int, val title: String) {
 }
 
 /**
+ * Вариант раскладки калькулятора
+ */
+enum class CalculatorLayout {
+    CLASSIC,      // Вариант A: Классический научный калькулятор
+    TWO_PANEL,    // Вариант B: Двухпанельный со свайпом
+    DRAWER        // Вариант C: Выдвижные панели
+}
+
+/**
  * Состояние UI
  */
 data class FormulaUiState(
@@ -28,7 +37,8 @@ data class FormulaUiState(
     val error: String? = null,
     val selectedTab: TabIndex = TabIndex.CALCULATOR,
     val isDragOver: Boolean = false,
-    val isResultDisplayed: Boolean = false
+    val isResultDisplayed: Boolean = false,
+    val calculatorLayout: CalculatorLayout = CalculatorLayout.CLASSIC
 )
 
 /**
@@ -258,6 +268,26 @@ class FormulaViewModel : ViewModel() {
      */
     fun selectTab(tab: TabIndex) {
         _uiState.value = _uiState.value.copy(selectedTab = tab)
+    }
+
+    /**
+     * Переключить раскладку калькулятора
+     */
+    fun setCalculatorLayout(layout: CalculatorLayout) {
+        _uiState.value = _uiState.value.copy(calculatorLayout = layout)
+    }
+
+    /**
+     * Переключить на следующую раскладку (для тестирования)
+     */
+    fun cycleCalculatorLayout() {
+        val current = _uiState.value.calculatorLayout
+        val next = when (current) {
+            CalculatorLayout.CLASSIC -> CalculatorLayout.TWO_PANEL
+            CalculatorLayout.TWO_PANEL -> CalculatorLayout.DRAWER
+            CalculatorLayout.DRAWER -> CalculatorLayout.CLASSIC
+        }
+        _uiState.value = _uiState.value.copy(calculatorLayout = next)
     }
 
     // ===== Drag & Drop =====
