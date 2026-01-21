@@ -1,8 +1,11 @@
 package com.formulacalc.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -40,6 +43,35 @@ fun MainScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
+                // ===== Кнопка переключения раскладки =====
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = when (uiState.calculatorLayout) {
+                            CalculatorLayout.CLASSIC -> "A: Классический"
+                            CalculatorLayout.TWO_PANEL -> "B: Двухпанельный"
+                            CalculatorLayout.DRAWER -> "C: Выдвижной"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    IconButton(
+                        onClick = { viewModel.cycleCalculatorLayout() },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Menu,
+                            contentDescription = "Сменить раскладку",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
                 // ===== Зона A: Редактор формул =====
                 FormulaEditorScreen(
                     viewModel = editorViewModel,
