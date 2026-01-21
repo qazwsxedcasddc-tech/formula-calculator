@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
  * - Левая панель (фиксированная): цифры + базовые операторы
  * - Правая панель (свайпается): функции / греческие / формулы
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun TwoPanelCalculatorTab(
     onDigitClick: (String) -> Unit,

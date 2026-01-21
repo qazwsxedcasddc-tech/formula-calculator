@@ -11,8 +11,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,6 +37,7 @@ import com.formulacalc.ui.draggableToken
  * - Свайп влево: выдвигается панель с научными функциями
  * - Свайп вправо: выдвигается панель с формулами/греческими
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DrawerCalculatorTab(
     onDigitClick: (String) -> Unit,
@@ -127,7 +128,7 @@ fun DrawerCalculatorTab(
                 ) {
                     IconButton(onClick = { leftDrawerOpen = !leftDrawerOpen }, modifier = Modifier.size(24.dp)) {
                         Icon(
-                            if (leftDrawerOpen) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            if (leftDrawerOpen) Icons.Filled.KeyboardArrowLeft else Icons.Filled.KeyboardArrowRight,
                             contentDescription = "Functions",
                             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                         )
@@ -139,7 +140,7 @@ fun DrawerCalculatorTab(
                     )
                     IconButton(onClick = { rightDrawerOpen = !rightDrawerOpen }, modifier = Modifier.size(24.dp)) {
                         Icon(
-                            if (rightDrawerOpen) Icons.AutoMirrored.Filled.KeyboardArrowRight else Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                            if (rightDrawerOpen) Icons.Filled.KeyboardArrowRight else Icons.Filled.KeyboardArrowLeft,
                             contentDescription = "Formulas",
                             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                         )
