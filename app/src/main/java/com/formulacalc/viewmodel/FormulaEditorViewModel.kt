@@ -155,13 +155,16 @@ class FormulaEditorViewModel : ViewModel() {
      * Переключить панель истории
      */
     fun toggleHistoryPanel() {
-        _state.update { it.copy(showHistoryPanel = !it.showHistoryPanel) }
+        val newState = !_state.value.showHistoryPanel
+        AppLogger.log("UI", "Панель истории: ${if (newState) "открыта" else "закрыта"}")
+        _state.update { it.copy(showHistoryPanel = newState) }
     }
 
     /**
      * Очистить историю
      */
     fun clearHistory() {
+        AppLogger.log("ACTION", "Очистка истории вычислений")
         calculationHistory.clear()
         _state.update { it.copy(calculationHistory = emptyList()) }
     }
@@ -411,6 +414,7 @@ class FormulaEditorViewModel : ViewModel() {
      * Закрытие меню оператора
      */
     fun dismissOperatorMenu() {
+        AppLogger.dialogClosed("OperatorMenu")
         _state.update {
             it.copy(
                 showOperatorMenu = false,
@@ -462,6 +466,8 @@ class FormulaEditorViewModel : ViewModel() {
     fun onVariableClick(id: String) {
         val element = _state.value.elements.findById(id)
         val currentExponent = (element as? FormulaElement.Variable)?.exponent
+        AppLogger.userTap("переменная для степени", (element as? FormulaElement.Variable)?.displayValue ?: id)
+        AppLogger.dialogOpened("ExponentKeyboard", "для ${(element as? FormulaElement.Variable)?.displayValue ?: id}")
 
         _state.update {
             it.copy(
@@ -477,6 +483,12 @@ class FormulaEditorViewModel : ViewModel() {
      */
     fun saveExponent(exponent: Exponent?) {
         val targetId = _state.value.exponentKeyboardTargetId ?: return
+        val expStr = when (exponent) {
+            is Exponent.Simple -> exponent.value
+            is Exponent.Fraction -> "${exponent.numerator}/${exponent.denominator}"
+            null -> "удалена"
+        }
+        AppLogger.log("ACTION", "Сохранение экспоненты: $expStr для $targetId")
 
         _state.update {
             it.copy(
@@ -486,12 +498,14 @@ class FormulaEditorViewModel : ViewModel() {
                 currentExponent = null
             )
         }
+        AppLogger.formulaChanged(_state.value.elements.toLogString())
     }
 
     /**
      * Закрытие клавиатуры экспоненты
      */
     fun dismissExponentKeyboard() {
+        AppLogger.dialogClosed("ExponentKeyboard")
         _state.update {
             it.copy(
                 showExponentKeyboard = false,
@@ -507,24 +521,117 @@ class FormulaEditorViewModel : ViewModel() {
      * Добавить переменную в конец формулы
      */
     fun addVariable(value: String, displayValue: String? = null) {
+        AppLogger.userTap("переменная", value)
         _state.update {
             val newElement = createVariable(value, displayValue)
             it.copy(
                 elements = (it.elements + newElement).normalize()
             )
         }
+        AppLogger.formulaChanged(_state.value.elements.toLogString())
     }
 
     /**
      * Добавить оператор в конец формулы
      */
     fun addOperator(type: OperatorType) {
+        AppLogger.userTap("оператор", type.symbol)
         _state.update {
             val newElement = createOperator(type)
             it.copy(
                 elements = (it.elements + newElement).normalize()
             )
         }
+        AppLogger.formulaChanged(_state.value.elements.toLogString())
+    }
+
+    /**
+     * Добавить число в конец формулы
+     */
+    fun addNumber(digit: String) {
+        AppLogger.userTap("цифра", digit)
+        val currentState = _state.value
+        val elements = currentState.elements
+
+        // Проверяем, есть ли число в конце формулы
+        val lastElement = elements.lastOrNull()
+        if (lastElement is FormulaElement.Variable && lastElement.value.all { it.isDigit() || it == '.' }) {
+            // Добавляем цифру к существующему числу
+            val newValue = lastElement.value + digit
+            val newElements = elements.dropLast(1) + createVariable(newValue)
+            _state.update { it.copy(elements = newElements) }
+        } else {
+            // Создаём новое число
+            _state.update {
+                val newElement = createVariable(digit)
+                it.copy(
+                    elements = (it.elements + newElement).normalize()
+                )
+            }
+        }
+        AppLogger.formulaChanged(_state.value.elements.toLogString())
+    }
+
+    /**
+     * Добавить десятичную точку
+     */
+    fun addDecimalPoint() {
+        AppLogger.userTap("десятичная точка", ".")
+        val currentState = _state.value
+        val elements = currentState.elements
+
+        val lastElement = elements.lastOrNull()
+        if (lastElement is FormulaElement.Variable &&
+            lastElement.value.all { it.isDigit() || it == '.' } &&
+            !lastElement.value.contains(".")) {
+            // Добавляем точку к числу
+            val newValue = lastElement.value + "."
+            val newElements = elements.dropLast(1) + createVariable(newValue)
+            _state.update { it.copy(elements = newElements) }
+        } else if (lastElement == null ||
+            lastElement is FormulaElement.Operator ||
+            lastElement is FormulaElement.Ellipsis) {
+            // Создаём новое число "0."
+            _state.update {
+                val newElement = createVariable("0.")
+                it.copy(
+                    elements = (it.elements + newElement).normalize()
+                )
+            }
+        }
+        AppLogger.formulaChanged(_state.value.elements.toLogString())
+    }
+
+    /**
+     * Удалить последний элемент (backspace)
+     */
+    fun deleteLastElement() {
+        AppLogger.userTap("backspace", "удаление")
+        val currentState = _state.value
+        val elements = currentState.elements
+
+        if (elements.isEmpty()) {
+            AppLogger.log("ACTION", "Формула уже пуста")
+            return
+        }
+
+        val lastElement = elements.lastOrNull()
+        AppLogger.log("ACTION", "Удаление элемента: ${lastElement?.toLogString()}")
+
+        // Если последний элемент - число с несколькими цифрами, удаляем последнюю цифру
+        if (lastElement is FormulaElement.Variable &&
+            lastElement.value.all { it.isDigit() || it == '.' } &&
+            lastElement.value.length > 1) {
+            val newValue = lastElement.value.dropLast(1)
+            val newElements = elements.dropLast(1) + createVariable(newValue)
+            _state.update { it.copy(elements = newElements) }
+        } else {
+            // Удаляем весь элемент
+            _state.update {
+                it.copy(elements = elements.dropLast(1))
+            }
+        }
+        AppLogger.formulaChanged(_state.value.elements.toLogString())
     }
 
     /**
@@ -653,6 +760,7 @@ class FormulaEditorViewModel : ViewModel() {
      * Закрыть диалог ввода переменной
      */
     fun dismissVariableInput() {
+        AppLogger.dialogClosed("VariableInput")
         _state.update {
             it.copy(
                 showVariableInput = false,

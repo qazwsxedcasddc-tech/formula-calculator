@@ -81,20 +81,24 @@ fun MainScreen(
                                 val opType = if (token.isOpen) OperatorType.OPEN_PAREN else OperatorType.CLOSE_PAREN
                                 editorViewModel.addOperator(opType)
                             }
-                            else -> {
-                                // Для остальных токенов используем старую логику
-                                viewModel.insertToken(token)
+                            is FormulaToken.Number -> {
+                                // Числа добавляем как переменные
+                                editorViewModel.addVariable(token.value)
+                            }
+                            is FormulaToken.Function -> {
+                                // Функции добавляем как переменные
+                                editorViewModel.addVariable(token.displayText)
                             }
                         }
                     },
-                    onDigitClick = { viewModel.insertDigit(it) },
-                    onDecimalClick = { viewModel.insertDecimalPoint() },
+                    onDigitClick = { editorViewModel.addNumber(it) },
+                    onDecimalClick = { editorViewModel.addDecimalPoint() },
                     onClearClick = {
                         viewModel.clear()
                         editorViewModel.clearFormula()
                     },
-                    onBackspaceClick = { viewModel.deleteToken() },
-                    onEqualsClick = { viewModel.evaluate() },
+                    onBackspaceClick = { editorViewModel.deleteLastElement() },
+                    onEqualsClick = { editorViewModel.calculateResult() },
                     onPresetClick = { viewModel.setPresetFormula(it) },
                     onPresetDoubleTap = { preset ->
                         // Двойной тап — загрузить формулу (заменить текущую)
