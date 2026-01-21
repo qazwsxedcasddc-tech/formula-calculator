@@ -6,10 +6,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.formulacalc.model.FormulaToken
 import com.formulacalc.model.PresetFormula
-import com.formulacalc.ui.tabs.CalculatorTab
-import com.formulacalc.ui.tabs.EngineeringTab
-import com.formulacalc.ui.tabs.FormulasTab
-import com.formulacalc.ui.tabs.GreekTab
+import com.formulacalc.ui.tabs.CombinedCalculatorTab
+import com.formulacalc.ui.tabs.CombinedFormulasTab
 import com.formulacalc.viewmodel.TabIndex
 
 /**
@@ -50,32 +48,20 @@ fun InputPanel(
     ) { tab ->
         when (tab) {
             TabIndex.CALCULATOR -> {
-                CalculatorTab(
+                CombinedCalculatorTab(
                     onDigitClick = onDigitClick,
                     onDecimalClick = onDecimalClick,
                     onClearClick = onClearClick,
                     onBackspaceClick = onBackspaceClick,
                     onEqualsClick = onEqualsClick,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            TabIndex.ENGINEERING -> {
-                EngineeringTab(
-                    onTokenClick = onTokenClick,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            TabIndex.GREEK -> {
-                GreekTab(
                     onTokenClick = onTokenClick,
                     modifier = Modifier.fillMaxSize()
                 )
             }
 
             TabIndex.FORMULAS -> {
-                FormulasTab(
+                CombinedFormulasTab(
+                    onTokenClick = onTokenClick,
                     onPresetClick = onPresetClick,
                     onPresetDoubleTap = onPresetDoubleTap,
                     modifier = Modifier.fillMaxSize()

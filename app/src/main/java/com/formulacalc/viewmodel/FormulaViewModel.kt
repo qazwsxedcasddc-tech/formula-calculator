@@ -12,12 +12,11 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Индекс вкладки
+ * Два режима: Калькулятор (цифры + инженерные) и Формулы (греческие + шаблоны)
  */
 enum class TabIndex(val index: Int, val title: String) {
     CALCULATOR(0, "Калькулятор"),
-    ENGINEERING(1, "Инженерный"),
-    GREEK(2, "Греческие"),
-    FORMULAS(3, "Формулы")
+    FORMULAS(1, "Формулы")
 }
 
 /**
