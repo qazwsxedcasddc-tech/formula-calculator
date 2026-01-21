@@ -6,6 +6,7 @@ import com.formulacalc.model.FormulaToken
 import com.formulacalc.model.PresetFormula
 import com.formulacalc.parser.EvalResult
 import com.formulacalc.parser.evaluateFormula
+import com.formulacalc.util.AppLogger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -66,18 +67,21 @@ class FormulaViewModel : ViewModel() {
      * Вставить токен в текущую позицию курсора
      */
     fun insertToken(token: FormulaToken) {
+        AppLogger.userTap("токен", token.displayText)
         _uiState.value = _uiState.value.copy(
             formula = _uiState.value.formula.insertToken(token),
             result = null,
             error = null,
             isResultDisplayed = false
         )
+        AppLogger.formulaChanged(_uiState.value.formula.toDisplayString())
     }
 
     /**
      * Вставить число (по цифрам)
      */
     fun insertDigit(digit: String) {
+        AppLogger.userTap("цифра", digit)
         val currentFormula = _uiState.value.formula
         val tokens = currentFormula.tokens
         val cursorPos = currentFormula.cursorPosition
@@ -97,6 +101,7 @@ class FormulaViewModel : ViewModel() {
                     error = null,
                     isResultDisplayed = false
                 )
+                AppLogger.formulaChanged(_uiState.value.formula.toDisplayString())
                 return
             }
         }
@@ -109,6 +114,7 @@ class FormulaViewModel : ViewModel() {
      * Вставить точку в число
      */
     fun insertDecimalPoint() {
+        AppLogger.userTap("десятичная точка", ".")
         val currentFormula = _uiState.value.formula
         val tokens = currentFormula.tokens
         val cursorPos = currentFormula.cursorPosition
@@ -126,6 +132,7 @@ class FormulaViewModel : ViewModel() {
                     error = null,
                     isResultDisplayed = false
                 )
+                AppLogger.formulaChanged(_uiState.value.formula.toDisplayString())
                 return
             }
         }
@@ -138,12 +145,14 @@ class FormulaViewModel : ViewModel() {
      * Удалить токен перед курсором (backspace)
      */
     fun deleteToken() {
+        AppLogger.userTap("backspace", "удаление")
         val currentFormula = _uiState.value.formula
         val tokens = currentFormula.tokens
         val cursorPos = currentFormula.cursorPosition
 
         if (cursorPos > 0) {
             val prevToken = tokens[cursorPos - 1]
+            AppLogger.log("ACTION", "Удаление элемента: ${prevToken.displayText}")
 
             // Если это число с несколькими цифрами — удаляем последнюю цифру
             if (prevToken is FormulaToken.Number && prevToken.value.length > 1) {
@@ -156,6 +165,7 @@ class FormulaViewModel : ViewModel() {
                     result = null,
                     error = null
                 )
+                AppLogger.formulaChanged(_uiState.value.formula.toDisplayString())
                 return
             }
         }
@@ -166,32 +176,40 @@ class FormulaViewModel : ViewModel() {
             result = null,
             error = null
         )
+        AppLogger.formulaChanged(_uiState.value.formula.toDisplayString())
     }
 
     /**
      * Очистить формулу
      */
     fun clear() {
+        AppLogger.userReset()
         _uiState.value = _uiState.value.copy(
             formula = Formula(),
             result = null,
             error = null,
             isResultDisplayed = false
         )
+        AppLogger.log("ACTION", "Формула очищена")
     }
 
     /**
      * Вычислить формулу
      */
     fun evaluate() {
+        AppLogger.userTap("equals", "вычисление")
         val formula = _uiState.value.formula
         if (formula.isEmpty()) {
+            AppLogger.calculationError("Формула пуста")
             _uiState.value = _uiState.value.copy(error = "Формула пуста")
             return
         }
 
+        AppLogger.calculationStarted(formula.toDisplayString(), variables.toMap())
+
         when (val result = evaluateFormula(formula.tokens, variables)) {
             is EvalResult.Success -> {
+                AppLogger.calculationResult(result.value, formula.toDisplayString())
                 _uiState.value = _uiState.value.copy(
                     result = result.formatted(),
                     error = null,
@@ -200,6 +218,7 @@ class FormulaViewModel : ViewModel() {
             }
 
             is EvalResult.Error -> {
+                AppLogger.calculationError(result.message, formula.toDisplayString())
                 _uiState.value = _uiState.value.copy(
                     result = null,
                     error = result.message
@@ -212,12 +231,14 @@ class FormulaViewModel : ViewModel() {
      * Установить готовую формулу (из пресетов)
      */
     fun setPresetFormula(preset: PresetFormula) {
+        AppLogger.userDropPreset(preset.name)
         _uiState.value = _uiState.value.copy(
             formula = Formula.fromTokens(preset.tokens),
             result = null,
             error = null,
             isResultDisplayed = false
         )
+        AppLogger.formulaChanged(_uiState.value.formula.toDisplayString())
     }
 
     /**
@@ -267,6 +288,7 @@ class FormulaViewModel : ViewModel() {
      * Выбрать вкладку
      */
     fun selectTab(tab: TabIndex) {
+        AppLogger.tabSelected(tab.title)
         _uiState.value = _uiState.value.copy(selectedTab = tab)
     }
 
@@ -274,6 +296,7 @@ class FormulaViewModel : ViewModel() {
      * Переключить раскладку калькулятора
      */
     fun setCalculatorLayout(layout: CalculatorLayout) {
+        AppLogger.log("UI", "Смена раскладки на: ${layout.name}")
         _uiState.value = _uiState.value.copy(calculatorLayout = layout)
     }
 
@@ -287,6 +310,7 @@ class FormulaViewModel : ViewModel() {
             CalculatorLayout.TWO_PANEL -> CalculatorLayout.DRAWER
             CalculatorLayout.DRAWER -> CalculatorLayout.CLASSIC
         }
+        AppLogger.log("UI", "Переключение раскладки: ${current.name} → ${next.name}")
         _uiState.value = _uiState.value.copy(calculatorLayout = next)
     }
 
@@ -303,6 +327,7 @@ class FormulaViewModel : ViewModel() {
      * Обработать drop токена
      */
     fun onTokenDropped(token: FormulaToken, dropPosition: Int? = null) {
+        AppLogger.userDragEnd(token.displayText, "формула", "позиция ${dropPosition ?: "курсор"}")
         val formula = _uiState.value.formula
 
         val newFormula = if (dropPosition != null) {
@@ -322,6 +347,7 @@ class FormulaViewModel : ViewModel() {
             result = null,
             error = null
         )
+        AppLogger.formulaChanged(_uiState.value.formula.toDisplayString())
     }
 
     /**
