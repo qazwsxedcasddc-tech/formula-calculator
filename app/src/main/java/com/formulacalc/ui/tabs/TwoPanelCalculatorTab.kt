@@ -201,6 +201,7 @@ private fun GreekPage(onTokenClick: (FormulaToken) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FormulasPage(onPresetDoubleTap: (PresetFormula) -> Unit) {
     Column(
