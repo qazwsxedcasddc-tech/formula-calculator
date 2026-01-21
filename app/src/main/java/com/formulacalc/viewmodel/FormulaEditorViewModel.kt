@@ -356,6 +356,23 @@ class FormulaEditorViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Очистить формулу (кнопка C) — сбрасывает к пустому полю
+     */
+    fun clearFormula() {
+        saveStateForUndo("Очистка формулы")
+        AppLogger.log("ACTION", "Очистка формулы")
+        boundsRegistry.clear()
+        _state.update {
+            it.copy(
+                elements = emptyList(),
+                variableValues = emptyMap(),
+                calculationResult = null,
+                calculationError = null
+            )
+        }
+    }
+
     // ===== Меню оператора =====
 
     /**
@@ -562,6 +579,30 @@ class FormulaEditorViewModel : ViewModel() {
                 )
             )
         }
+    }
+
+    /**
+     * Загрузить готовую формулу (заменить текущую) — вызывается по двойному тапу
+     */
+    fun loadPresetFormula(preset: PresetFormula) {
+        saveStateForUndo("Загрузка формулы ${preset.name}")
+        Log.d("FormulaEditor", "loadPresetFormula: ${preset.name}")
+        AppLogger.log("ACTION", "Загрузка формулы: ${preset.name}")
+
+        boundsRegistry.clear()
+
+        // Конвертируем preset в полную формулу (включая левую часть)
+        val newElements = preset.toFullFormulaElements()
+
+        _state.update { currentState ->
+            currentState.copy(
+                elements = newElements,
+                variableValues = emptyMap(), // Сбрасываем значения переменных
+                calculationResult = null,
+                calculationError = null
+            )
+        }
+        AppLogger.formulaChanged(_state.value.elements.toLogString())
     }
 
     // ===== Ввод значений переменных =====

@@ -1,5 +1,6 @@
 package com.formulacalc.ui.tabs
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -8,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -27,6 +29,7 @@ import com.formulacalc.ui.draggablePreset
 @Composable
 fun FormulasTab(
     onPresetClick: (PresetFormula) -> Unit,
+    onPresetDoubleTap: (PresetFormula) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -49,7 +52,8 @@ fun FormulasTab(
             items(presetFormulas) { preset ->
                 FormulaCard(
                     preset = preset,
-                    onClick = { onPresetClick(preset) }
+                    onClick = { onPresetClick(preset) },
+                    onDoubleTap = { onPresetDoubleTap(preset) }
                 )
             }
         }
@@ -57,19 +61,24 @@ fun FormulasTab(
 }
 
 /**
- * Карточка готовой формулы с поддержкой drag & drop
+ * Карточка готовой формулы с поддержкой drag & drop и двойного тапа
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FormulaCard(
     preset: PresetFormula,
     onClick: () -> Unit,
+    onDoubleTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
-        onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
+            .pointerInput(preset) {
+                detectTapGestures(
+                    onTap = { onClick() },
+                    onDoubleTap = { onDoubleTap() }
+                )
+            }
             .draggablePreset(preset, onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(

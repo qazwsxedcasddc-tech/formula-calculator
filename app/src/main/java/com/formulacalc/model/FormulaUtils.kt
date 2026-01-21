@@ -48,20 +48,18 @@ fun createParentheses(
  * Начальная тестовая формула со скобками и операторами.
  * Для тестирования новых функций: клик на скобки, замена оператора.
  */
+/**
+ * Пустая формула для старта приложения
+ */
+fun getEmptyFormula(): List<FormulaElement> {
+    return emptyList()
+}
+
+/**
+ * Начальная формула (пустая)
+ */
 fun getInitialGravityFormula(): List<FormulaElement> {
-    return listOf(
-        createVariable("a"),
-        createOperator(OperatorType.PLUS),
-        FormulaElement.Parentheses(
-            children = listOf(
-                createVariable("b"),
-                createOperator(OperatorType.MULTIPLY),
-                createVariable("c")
-            )
-        ),
-        createOperator(OperatorType.MINUS),
-        createVariable("d")
-    )
+    return getEmptyFormula()
 }
 
 /**
@@ -520,6 +518,41 @@ private fun normalizeExponent(exp: String): String {
 }
 
 /**
+ * Конвертирует PresetFormula в ПОЛНЫЙ список FormulaElement.
+ * Включает левую часть + знак равенства + правую часть.
+ *
+ * Например: "F = m × a" → [F, =, m, ×, a]
+ *
+ * Также обрабатывает деление как дробь (визуальную).
+ */
+fun PresetFormula.toFullFormulaElements(): List<FormulaElement> {
+    val result = mutableListOf<FormulaElement>()
+
+    // Находим индекс знака "="
+    val equalsIndex = tokens.indexOfFirst {
+        it is FormulaToken.Operator && it.symbol == "="
+    }
+
+    if (equalsIndex > 0) {
+        // Левая часть (до =)
+        val leftSideTokens = tokens.subList(0, equalsIndex)
+        result.addAll(convertSimpleTokens(leftSideTokens))
+
+        // Знак равенства
+        result.add(createEquals())
+
+        // Правая часть (после =)
+        val rightSideTokens = tokens.subList(equalsIndex + 1, tokens.size)
+        result.addAll(convertTokensToElements(rightSideTokens))
+    } else {
+        // Нет знака = — конвертируем всё как есть
+        result.addAll(convertTokensToElements(tokens))
+    }
+
+    return result
+}
+
+/**
  * Конвертирует PresetFormula в список FormulaElement.
  * Возвращает только ПРАВУЮ часть формулы (после знака =).
  *
@@ -548,7 +581,7 @@ fun PresetFormula.toFormulaElements(): List<FormulaElement> {
  * Конвертирует список токенов в список элементов формулы.
  * Обрабатывает деление как дробь.
  */
-private fun convertTokensToElements(tokens: List<FormulaToken>): List<FormulaElement> {
+internal fun convertTokensToElements(tokens: List<FormulaToken>): List<FormulaElement> {
     // Сначала проверяем, есть ли деление — если да, создаём дробь
     val divideIndex = tokens.indexOfFirst {
         it is FormulaToken.Operator && it.symbol == "÷"
@@ -574,7 +607,7 @@ private fun convertTokensToElements(tokens: List<FormulaToken>): List<FormulaEle
 /**
  * Конвертирует простые токены (без создания дробей).
  */
-private fun convertSimpleTokens(tokens: List<FormulaToken>): List<FormulaElement> {
+internal fun convertSimpleTokens(tokens: List<FormulaToken>): List<FormulaElement> {
     val result = mutableListOf<FormulaElement>()
 
     for (token in tokens) {

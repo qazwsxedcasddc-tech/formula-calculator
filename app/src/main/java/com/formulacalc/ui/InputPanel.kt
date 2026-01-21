@@ -28,6 +28,7 @@ fun InputPanel(
     onBackspaceClick: () -> Unit,
     onEqualsClick: () -> Unit,
     onPresetClick: (PresetFormula) -> Unit,
+    onPresetDoubleTap: (PresetFormula) -> Unit,
     modifier: Modifier = Modifier
 ) {
     AnimatedContent(
@@ -76,6 +77,7 @@ fun InputPanel(
             TabIndex.FORMULAS -> {
                 FormulasTab(
                     onPresetClick = onPresetClick,
+                    onPresetDoubleTap = onPresetDoubleTap,
                     modifier = Modifier.fillMaxSize()
                 )
             }

@@ -87,11 +87,15 @@ fun MainScreen(
                     onDecimalClick = { viewModel.insertDecimalPoint() },
                     onClearClick = {
                         viewModel.clear()
-                        editorViewModel.reset()
+                        editorViewModel.clearFormula()
                     },
                     onBackspaceClick = { viewModel.deleteToken() },
                     onEqualsClick = { viewModel.evaluate() },
                     onPresetClick = { viewModel.setPresetFormula(it) },
+                    onPresetDoubleTap = { preset ->
+                        // Двойной тап — загрузить формулу (заменить текущую)
+                        editorViewModel.loadPresetFormula(preset)
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(0.55f)
