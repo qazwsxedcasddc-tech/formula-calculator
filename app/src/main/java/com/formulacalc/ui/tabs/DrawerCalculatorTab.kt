@@ -11,8 +11,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -127,7 +127,7 @@ fun DrawerCalculatorTab(
                 ) {
                     IconButton(onClick = { leftDrawerOpen = !leftDrawerOpen }, modifier = Modifier.size(24.dp)) {
                         Icon(
-                            if (leftDrawerOpen) Icons.Default.ChevronLeft else Icons.Default.ChevronRight,
+                            if (leftDrawerOpen) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.AutoMirrored.Filled.KeyboardArrowRight,
                             contentDescription = "Functions",
                             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                         )
@@ -139,7 +139,7 @@ fun DrawerCalculatorTab(
                     )
                     IconButton(onClick = { rightDrawerOpen = !rightDrawerOpen }, modifier = Modifier.size(24.dp)) {
                         Icon(
-                            if (rightDrawerOpen) Icons.Default.ChevronRight else Icons.Default.ChevronLeft,
+                            if (rightDrawerOpen) Icons.AutoMirrored.Filled.KeyboardArrowRight else Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                             contentDescription = "Formulas",
                             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                         )
