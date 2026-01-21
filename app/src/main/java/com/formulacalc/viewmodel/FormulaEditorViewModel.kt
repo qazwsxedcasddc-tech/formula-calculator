@@ -582,25 +582,24 @@ class FormulaEditorViewModel : ViewModel() {
     }
 
     /**
-     * Загрузить готовую формулу (заменить текущую) — вызывается по двойному тапу
+     * Добавить формулу по двойному тапу — добавляет ПРАВУЮ часть к текущей формуле
+     * Например: текущая "m × a", двойной тап на "v = s ÷ t" → "m × a [оператор] s ÷ t"
      */
     fun loadPresetFormula(preset: PresetFormula) {
-        saveStateForUndo("Загрузка формулы ${preset.name}")
-        Log.d("FormulaEditor", "loadPresetFormula: ${preset.name}")
-        AppLogger.log("ACTION", "Загрузка формулы: ${preset.name}")
+        saveStateForUndo("Добавление формулы ${preset.name}")
+        Log.d("FormulaEditor", "loadPresetFormula (append): ${preset.name}")
+        AppLogger.log("ACTION", "Добавление формулы: ${preset.name}")
 
-        boundsRegistry.clear()
-
-        // Конвертируем preset в полную формулу (включая левую часть)
-        val newElements = preset.toFullFormulaElements()
+        // Конвертируем preset в элементы (только ПРАВАЯ часть, как при drag & drop)
+        val newElements = preset.toFormulaElements()
+        Log.d("FormulaEditor", "Converted to ${newElements.size} elements")
 
         _state.update { currentState ->
-            currentState.copy(
-                elements = newElements,
-                variableValues = emptyMap(), // Сбрасываем значения переменных
-                calculationResult = null,
-                calculationError = null
-            )
+            // Добавляем к существующей формуле с автоматическим ellipsis
+            val updatedElements = currentState.elements.appendElements(newElements)
+            Log.d("FormulaEditor", "Total elements now: ${updatedElements.size}")
+
+            currentState.copy(elements = updatedElements)
         }
         AppLogger.formulaChanged(_state.value.elements.toLogString())
     }
