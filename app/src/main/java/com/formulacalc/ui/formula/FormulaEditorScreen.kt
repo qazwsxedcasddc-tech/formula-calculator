@@ -650,13 +650,19 @@ private fun FormulaArea(
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
 
-    // Сброс масштаба и позиции при очистке формулы
+    // Размер контейнера для ограничения панорамирования
+    var containerWidth by remember { mutableStateOf(0f) }
+    var containerHeight by remember { mutableStateOf(0f) }
+
+    // Сброс позиции при добавлении/удалении элементов (чтобы новые элементы были видны)
+    // Масштаб НЕ сбрасываем - только позицию
     LaunchedEffect(elements.size) {
         if (elements.isEmpty()) {
             scale = 1f
-            offsetX = 0f
-            offsetY = 0f
         }
+        // Сбрасываем смещение при любом изменении формулы
+        offsetX = 0f
+        offsetY = 0f
     }
 
     // Анимация цвета границы при drag over
@@ -724,13 +730,20 @@ private fun FormulaArea(
                     modifier = Modifier
                         .fillMaxSize()
                         .clipToBounds()
+                        .onGloballyPositioned { coordinates ->
+                            containerWidth = coordinates.size.width.toFloat()
+                            containerHeight = coordinates.size.height.toFloat()
+                        }
                         .pointerInput(Unit) {
                             detectTransformGestures { _, pan, zoom, _ ->
                                 // Масштабирование (от 30% до 300%)
                                 scale = (scale * zoom).coerceIn(0.3f, 3f)
-                                // Панорамирование
-                                offsetX += pan.x
-                                offsetY += pan.y
+                                // Панорамирование с ограничениями
+                                // Ограничиваем смещение - формула не может уйти дальше чем на 50% контейнера
+                                val maxOffset = containerWidth * 0.5f
+                                val maxOffsetY = containerHeight * 0.5f
+                                offsetX = (offsetX + pan.x).coerceIn(-maxOffset, maxOffset)
+                                offsetY = (offsetY + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
                             }
                         }
                         .pointerInput(Unit) {
