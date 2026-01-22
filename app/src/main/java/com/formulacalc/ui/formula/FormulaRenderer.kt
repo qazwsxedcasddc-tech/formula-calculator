@@ -214,56 +214,28 @@ fun FormulaRenderer(
         else -> 0.80f
     }
 
-    // Корневой уровень — используем FlowRow для переноса элементов на новые строки
-    if (nestingLevel == 0) {
-        FlowRow(
-            modifier = modifier,
-            horizontalArrangement = Arrangement.Center,
-            verticalArrangement = Arrangement.Center,
-            maxItemsInEachRow = Int.MAX_VALUE // Авто-перенос по ширине
-        ) {
-            elements.forEach { element ->
-                FormulaElementView(
-                    element = element,
-                    scale = nestingScale,
-                    dragState = dragState,
-                    hoverState = hoverState,
-                    onDragStart = onDragStart,
-                    onDragEnd = onDragEnd,
-                    onDragMove = onDragMove,
-                    onEllipsisClick = onEllipsisClick,
-                    onVariableClick = onVariableClick,
-                    onParenthesesClick = onParenthesesClick,
-                    onOperatorClick = onOperatorClick,
-                    nestingLevel = nestingLevel,
-                    variableValues = variableValues
-                )
-            }
-        }
-    } else {
-        // Вложенный уровень — Row чтобы дроби и скобки были в одну линию
-        Row(
-            modifier = modifier,
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            elements.forEach { element ->
-                FormulaElementView(
-                    element = element,
-                    scale = nestingScale,
-                    dragState = dragState,
-                    hoverState = hoverState,
-                    onDragStart = onDragStart,
-                    onDragEnd = onDragEnd,
-                    onDragMove = onDragMove,
-                    onEllipsisClick = onEllipsisClick,
-                    onVariableClick = onVariableClick,
-                    onParenthesesClick = onParenthesesClick,
-                    onOperatorClick = onOperatorClick,
-                    nestingLevel = nestingLevel,
-                    variableValues = variableValues
-                )
-            }
+    // Row для правильного выравнивания элементов разной высоты (дроби)
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        elements.forEach { element ->
+            FormulaElementView(
+                element = element,
+                scale = nestingScale,
+                dragState = dragState,
+                hoverState = hoverState,
+                onDragStart = onDragStart,
+                onDragEnd = onDragEnd,
+                onDragMove = onDragMove,
+                onEllipsisClick = onEllipsisClick,
+                onVariableClick = onVariableClick,
+                onParenthesesClick = onParenthesesClick,
+                onOperatorClick = onOperatorClick,
+                nestingLevel = nestingLevel,
+                variableValues = variableValues
+            )
         }
     }
 }
