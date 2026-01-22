@@ -647,25 +647,18 @@ private fun FormulaArea(
     var contentWidth by remember { mutableStateOf(0f) }
     var contentHeight by remember { mutableStateOf(0f) }
 
-    // Текущий масштаб (хранится отдельно для корректного измерения)
-    var currentScale by remember { mutableStateOf(1f) }
-
     // Вычисляем масштаб по ширине и высоте
-    val autoScale = remember(containerWidth, containerHeight, contentWidth, contentHeight, currentScale, elements.size) {
+    // graphicsLayer не меняет layout-размер, поэтому contentWidth/contentHeight - это реальные размеры
+    val autoScale = remember(containerWidth, containerHeight, contentWidth, contentHeight, elements.size) {
         if (contentWidth > 0 && contentHeight > 0 && containerWidth > 0 && containerHeight > 0) {
-            // Восстанавливаем реальный размер контента (до масштабирования)
-            val realContentWidth = contentWidth / currentScale
-            val realContentHeight = contentHeight / currentScale
-
             val padding = 32f
             val availableWidth = containerWidth - padding
             val availableHeight = containerHeight - padding
 
-            val scaleX = availableWidth / realContentWidth
-            val scaleY = availableHeight / realContentHeight
+            val scaleX = availableWidth / contentWidth
+            val scaleY = availableHeight / contentHeight
 
             // Плавная градация: минимальный масштаб 0.4 (40%), максимальный 1.0
-            // Если формула не помещается даже при 40% - будет горизонтальный скролл
             minOf(scaleX, scaleY, 1f).coerceIn(0.4f, 1f)
         } else {
             1f
@@ -678,11 +671,6 @@ private fun FormulaArea(
         animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
         label = "scaleAnimation"
     )
-
-    // Обновляем currentScale после вычисления нового autoScale
-    LaunchedEffect(autoScale) {
-        currentScale = autoScale
-    }
 
     // Анимация цвета границы при drag over
     val borderColor by animateColorAsState(
