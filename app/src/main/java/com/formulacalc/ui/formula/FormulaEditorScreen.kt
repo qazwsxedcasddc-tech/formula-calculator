@@ -665,12 +665,20 @@ private fun FormulaArea(
             val scaleX = availableWidth / realContentWidth
             val scaleY = availableHeight / realContentHeight
 
-            // Минимальный масштаб 0.2, максимальный 1.0
-            minOf(scaleX, scaleY, 1f).coerceIn(0.2f, 1f)
+            // Минимальный масштаб 0.05 (5%), максимальный 1.0
+            // Плавная градация без резких скачков
+            minOf(scaleX, scaleY, 1f).coerceIn(0.05f, 1f)
         } else {
             1f
         }
     }
+
+    // Анимированный масштаб для плавных переходов
+    val animatedScale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = autoScale,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
+        label = "scaleAnimation"
+    )
 
     // Обновляем currentScale после вычисления нового autoScale
     LaunchedEffect(autoScale) {
@@ -754,8 +762,8 @@ private fun FormulaArea(
                             contentHeight = measuredHeight
                         }
                         .graphicsLayer {
-                            scaleX = autoScale
-                            scaleY = autoScale
+                            scaleX = animatedScale
+                            scaleY = animatedScale
                         },
                     contentAlignment = Alignment.Center
                 ) {
@@ -777,14 +785,19 @@ private fun FormulaArea(
         }
 
         // Индикатор масштаба (показываем если формула уменьшена)
-        if (autoScale < 0.95f) {
+        if (animatedScale < 0.95f) {
             Text(
-                text = "${(autoScale * 100).toInt()}%",
+                text = "${(animatedScale * 100).toInt()}%",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(8.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                        shape = RoundedCornerShape(4.dp)
+                    )
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
             )
         }
     }
