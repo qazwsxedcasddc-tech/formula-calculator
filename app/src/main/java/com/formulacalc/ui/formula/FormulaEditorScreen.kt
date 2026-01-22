@@ -647,15 +647,34 @@ private fun FormulaArea(
     var contentWidth by remember { mutableStateOf(0f) }
     var contentHeight by remember { mutableStateOf(0f) }
 
+    // Текущий масштаб (хранится отдельно для корректного измерения)
+    var currentScale by remember { mutableStateOf(1f) }
+
     // Вычисляем масштаб чтобы формула поместилась целиком
-    val autoScale = remember(containerWidth, containerHeight, contentWidth, contentHeight) {
+    // Используем realContentWidth = contentWidth / currentScale для получения реального размера
+    val autoScale = remember(containerWidth, containerHeight, contentWidth, contentHeight, currentScale, elements.size) {
         if (contentWidth > 0 && contentHeight > 0 && containerWidth > 0 && containerHeight > 0) {
-            val scaleX = (containerWidth - 32f) / contentWidth // 32 = padding
-            val scaleY = (containerHeight - 32f) / contentHeight
-            minOf(scaleX, scaleY, 1f).coerceIn(0.3f, 1f)
+            // Восстанавливаем реальный размер контента (до масштабирования)
+            val realContentWidth = contentWidth / currentScale
+            val realContentHeight = contentHeight / currentScale
+
+            val padding = 32f
+            val availableWidth = containerWidth - padding
+            val availableHeight = containerHeight - padding
+
+            val scaleX = availableWidth / realContentWidth
+            val scaleY = availableHeight / realContentHeight
+
+            // Минимальный масштаб 0.2, максимальный 1.0
+            minOf(scaleX, scaleY, 1f).coerceIn(0.2f, 1f)
         } else {
             1f
         }
+    }
+
+    // Обновляем currentScale после вычисления нового autoScale
+    LaunchedEffect(autoScale) {
+        currentScale = autoScale
     }
 
     // Анимация цвета границы при drag over
@@ -725,14 +744,20 @@ private fun FormulaArea(
                 // Применяем автомасштабирование
                 Box(
                     modifier = Modifier
+                        .wrapContentSize(unbounded = true)
                         .onGloballyPositioned { coordinates ->
-                            contentWidth = coordinates.size.width.toFloat()
-                            contentHeight = coordinates.size.height.toFloat()
+                            // Измеряем размер после масштабирования, делим на scale для получения реального
+                            val measuredWidth = coordinates.size.width.toFloat()
+                            val measuredHeight = coordinates.size.height.toFloat()
+                            // Сохраняем измеренный размер (после масштаба)
+                            contentWidth = measuredWidth
+                            contentHeight = measuredHeight
                         }
                         .graphicsLayer {
                             scaleX = autoScale
                             scaleY = autoScale
-                        }
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
                     FormulaRenderer(
                         elements = elements,
