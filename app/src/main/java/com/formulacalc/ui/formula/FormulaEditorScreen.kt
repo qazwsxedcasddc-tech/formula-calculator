@@ -654,15 +654,13 @@ private fun FormulaArea(
     var containerWidth by remember { mutableStateOf(0f) }
     var containerHeight by remember { mutableStateOf(0f) }
 
-    // Сброс позиции при добавлении/удалении элементов (чтобы новые элементы были видны)
-    // Масштаб НЕ сбрасываем - только позицию
-    LaunchedEffect(elements.size) {
+    // Сброс масштаба и позиции только при очистке формулы
+    LaunchedEffect(elements.isEmpty()) {
         if (elements.isEmpty()) {
             scale = 1f
+            offsetX = 0f
+            offsetY = 0f
         }
-        // Сбрасываем смещение при любом изменении формулы
-        offsetX = 0f
-        offsetY = 0f
     }
 
     // Анимация цвета границы при drag over
@@ -766,7 +764,7 @@ private fun FormulaArea(
                                 translationX = offsetX
                                 translationY = offsetY
                             },
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.CenterStart  // Выравниваем по левому краю
                     ) {
                         FormulaRenderer(
                             elements = elements,
