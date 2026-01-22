@@ -645,21 +645,23 @@ private fun FormulaArea(
 ) {
     var isDragOver by remember { mutableStateOf(false) }
 
-    // Pinch-to-zoom: масштаб и смещение
+    // Pinch-to-zoom: только масштаб
     var scale by remember { mutableStateOf(1f) }
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
 
-    // Размер контейнера для ограничения панорамирования
-    var containerWidth by remember { mutableStateOf(0f) }
-    var containerHeight by remember { mutableStateOf(0f) }
+    // Горизонтальный скролл для прокрутки длинных формул
+    val scrollState = rememberScrollState()
 
-    // Сброс масштаба и позиции только при очистке формулы
+    // Сброс масштаба при очистке формулы
     LaunchedEffect(elements.isEmpty()) {
         if (elements.isEmpty()) {
             scale = 1f
-            offsetX = 0f
-            offsetY = 0f
+        }
+    }
+
+    // Автопрокрутка к концу при добавлении элементов
+    LaunchedEffect(elements.size) {
+        if (elements.isNotEmpty()) {
+            scrollState.animateScrollTo(scrollState.maxValue)
         }
     }
 
@@ -723,48 +725,36 @@ private fun FormulaArea(
                     }
                 )
             } else {
-                // Pinch-to-zoom с панорамированием
+                // Горизонтальный скролл + pinch-to-zoom
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .clipToBounds()
-                        .onGloballyPositioned { coordinates ->
-                            containerWidth = coordinates.size.width.toFloat()
-                            containerHeight = coordinates.size.height.toFloat()
-                        }
                         .pointerInput(Unit) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                // Масштабирование (от 30% до 300%)
+                            detectTransformGestures { _, _, zoom, _ ->
+                                // Только масштабирование (от 30% до 300%)
                                 scale = (scale * zoom).coerceIn(0.3f, 3f)
-                                // Панорамирование с ограничениями
-                                // Ограничиваем смещение - формула не может уйти дальше чем на 50% контейнера
-                                val maxOffset = containerWidth * 0.5f
-                                val maxOffsetY = containerHeight * 0.5f
-                                offsetX = (offsetX + pan.x).coerceIn(-maxOffset, maxOffset)
-                                offsetY = (offsetY + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
                             }
                         }
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onDoubleTap = {
-                                    // Двойной тап — сброс масштаба и позиции
+                                    // Двойной тап — сброс масштаба
                                     scale = 1f
-                                    offsetX = 0f
-                                    offsetY = 0f
                                 }
                             )
                         },
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    Box(
+                    // Горизонтальный скролл для прокрутки длинных формул
+                    Row(
                         modifier = Modifier
+                            .horizontalScroll(scrollState)
                             .graphicsLayer {
                                 scaleX = scale
                                 scaleY = scale
-                                translationX = offsetX
-                                translationY = offsetY
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
                             },
-                        contentAlignment = Alignment.CenterStart  // Выравниваем по левому краю
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         FormulaRenderer(
                             elements = elements,
