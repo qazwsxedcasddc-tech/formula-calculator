@@ -650,24 +650,20 @@ private fun FormulaArea(
     // Текущий масштаб (хранится отдельно для корректного измерения)
     var currentScale by remember { mutableStateOf(1f) }
 
-    // Вычисляем масштаб чтобы формула поместилась целиком
-    // Используем realContentWidth = contentWidth / currentScale для получения реального размера
-    val autoScale = remember(containerWidth, containerHeight, contentWidth, contentHeight, currentScale, elements.size) {
-        if (contentWidth > 0 && contentHeight > 0 && containerWidth > 0 && containerHeight > 0) {
+    // Вычисляем масштаб только по высоте (ширина обрабатывается FlowRow с переносом)
+    val autoScale = remember(containerHeight, contentHeight, currentScale, elements.size) {
+        if (contentHeight > 0 && containerHeight > 0) {
             // Восстанавливаем реальный размер контента (до масштабирования)
-            val realContentWidth = contentWidth / currentScale
             val realContentHeight = contentHeight / currentScale
 
             val padding = 32f
-            val availableWidth = containerWidth - padding
             val availableHeight = containerHeight - padding
 
-            val scaleX = availableWidth / realContentWidth
             val scaleY = availableHeight / realContentHeight
 
-            // Минимальный масштаб 0.05 (5%), максимальный 1.0
-            // Плавная градация без резких скачков
-            minOf(scaleX, scaleY, 1f).coerceIn(0.05f, 1f)
+            // Плавная градация: минимальный масштаб 0.3 (30%), максимальный 1.0
+            // При 3 формулах ~ 90%, при 5 ~ 80%, при 10 ~ 60%, при 20 ~ 40%
+            minOf(scaleY, 1f).coerceIn(0.3f, 1f)
         } else {
             1f
         }
@@ -749,26 +745,24 @@ private fun FormulaArea(
                     }
                 )
             } else {
-                // Применяем автомасштабирование
+                // Применяем автомасштабирование с FlowRow переносом
                 Box(
                     modifier = Modifier
-                        .wrapContentSize(unbounded = true)
+                        .fillMaxWidth()
                         .onGloballyPositioned { coordinates ->
-                            // Измеряем размер после масштабирования, делим на scale для получения реального
-                            val measuredWidth = coordinates.size.width.toFloat()
                             val measuredHeight = coordinates.size.height.toFloat()
-                            // Сохраняем измеренный размер (после масштаба)
-                            contentWidth = measuredWidth
                             contentHeight = measuredHeight
                         }
                         .graphicsLayer {
                             scaleX = animatedScale
                             scaleY = animatedScale
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f) // Масштаб от верха
                         },
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.TopCenter
                 ) {
                     FormulaRenderer(
                         elements = elements,
+                        modifier = Modifier.fillMaxWidth(),
                         dragState = dragState,
                         hoverState = hoverState,
                         onDragStart = onDragStart,

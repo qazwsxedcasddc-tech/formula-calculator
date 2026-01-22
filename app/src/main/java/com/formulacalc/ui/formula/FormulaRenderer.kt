@@ -8,6 +8,8 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -186,6 +188,7 @@ private fun formatNumber(value: Double): String {
 /**
  * Рендеринг формулы с drag & drop и авто-масштабированием
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FormulaRenderer(
     elements: List<FormulaElement>,
@@ -211,67 +214,34 @@ fun FormulaRenderer(
         else -> 0.80f
     }
 
-    // Для корневого уровня (nestingLevel=0) вычисляем глобальный масштаб
-    if (nestingLevel == 0 && maxWidth != null && maxHeight != null) {
-        // Измеряем содержимое и масштабируем
-        var contentWidth by remember { mutableStateOf(0f) }
-        var contentHeight by remember { mutableStateOf(0f) }
-
-        val density = androidx.compose.ui.platform.LocalDensity.current
-        val maxWidthPx = with(density) { maxWidth.toPx() }
-        val maxHeightPx = with(density) { maxHeight.toPx() }
-
-        // Вычисляем масштаб
-        val globalScale = remember(contentWidth, contentHeight, maxWidthPx, maxHeightPx) {
-            if (contentWidth > 0 && contentHeight > 0) {
-                val scaleX = if (contentWidth > maxWidthPx) maxWidthPx / contentWidth else 1f
-                val scaleY = if (contentHeight > maxHeightPx) maxHeightPx / contentHeight else 1f
-                minOf(scaleX, scaleY, 1f).coerceIn(0.4f, 1f)
-            } else {
-                1f
-            }
-        }
-
-        Box(
-            modifier = modifier
-                .graphicsLayer {
-                    scaleX = globalScale
-                    scaleY = globalScale
-                    // Центрируем после масштабирования
-                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin.Center
-                },
-            contentAlignment = Alignment.Center
+    // Корневой уровень — используем FlowRow для переноса элементов на новые строки
+    if (nestingLevel == 0) {
+        FlowRow(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.Center,
+            verticalArrangement = Arrangement.Center,
+            maxItemsInEachRow = Int.MAX_VALUE // Авто-перенос по ширине
         ) {
-            Row(
-                modifier = Modifier.onGloballyPositioned { coordinates ->
-                    // Измеряем оригинальный размер (до масштабирования)
-                    contentWidth = coordinates.size.width.toFloat()
-                    contentHeight = coordinates.size.height.toFloat()
-                },
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                elements.forEach { element ->
-                    FormulaElementView(
-                        element = element,
-                        scale = nestingScale,
-                        dragState = dragState,
-                        hoverState = hoverState,
-                        onDragStart = onDragStart,
-                        onDragEnd = onDragEnd,
-                        onDragMove = onDragMove,
-                        onEllipsisClick = onEllipsisClick,
-                        onVariableClick = onVariableClick,
-                        onParenthesesClick = onParenthesesClick,
-                        onOperatorClick = onOperatorClick,
-                        nestingLevel = nestingLevel,
-                        variableValues = variableValues
-                    )
-                }
+            elements.forEach { element ->
+                FormulaElementView(
+                    element = element,
+                    scale = nestingScale,
+                    dragState = dragState,
+                    hoverState = hoverState,
+                    onDragStart = onDragStart,
+                    onDragEnd = onDragEnd,
+                    onDragMove = onDragMove,
+                    onEllipsisClick = onEllipsisClick,
+                    onVariableClick = onVariableClick,
+                    onParenthesesClick = onParenthesesClick,
+                    onOperatorClick = onOperatorClick,
+                    nestingLevel = nestingLevel,
+                    variableValues = variableValues
+                )
             }
         }
     } else {
-        // Вложенный уровень — без авто-масштабирования
+        // Вложенный уровень — Row чтобы дроби и скобки были в одну линию
         Row(
             modifier = modifier,
             horizontalArrangement = Arrangement.Center,
