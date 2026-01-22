@@ -15,7 +15,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
@@ -641,36 +645,19 @@ private fun FormulaArea(
 ) {
     var isDragOver by remember { mutableStateOf(false) }
 
-    // Для автомасштабирования
-    var containerWidth by remember { mutableStateOf(0f) }
-    var containerHeight by remember { mutableStateOf(0f) }
-    var contentWidth by remember { mutableStateOf(0f) }
-    var contentHeight by remember { mutableStateOf(0f) }
+    // Pinch-to-zoom: масштаб и смещение
+    var scale by remember { mutableStateOf(1f) }
+    var offsetX by remember { mutableStateOf(0f) }
+    var offsetY by remember { mutableStateOf(0f) }
 
-    // Вычисляем масштаб по ширине и высоте
-    // graphicsLayer не меняет layout-размер, поэтому contentWidth/contentHeight - это реальные размеры
-    val autoScale = remember(containerWidth, containerHeight, contentWidth, contentHeight, elements.size) {
-        if (contentWidth > 0 && contentHeight > 0 && containerWidth > 0 && containerHeight > 0) {
-            val padding = 32f
-            val availableWidth = containerWidth - padding
-            val availableHeight = containerHeight - padding
-
-            val scaleX = availableWidth / contentWidth
-            val scaleY = availableHeight / contentHeight
-
-            // Плавная градация: минимальный масштаб 0.4 (40%), максимальный 1.0
-            minOf(scaleX, scaleY, 1f).coerceIn(0.4f, 1f)
-        } else {
-            1f
+    // Сброс масштаба и позиции при очистке формулы
+    LaunchedEffect(elements.size) {
+        if (elements.isEmpty()) {
+            scale = 1f
+            offsetX = 0f
+            offsetY = 0f
         }
     }
-
-    // Анимированный масштаб для плавных переходов
-    val animatedScale by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = autoScale,
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = 200),
-        label = "scaleAnimation"
-    )
 
     // Анимация цвета границы при drag over
     val borderColor by animateColorAsState(
@@ -714,14 +701,10 @@ private fun FormulaArea(
                 }
             )
     ) {
-        // Контент с автомасштабированием
+        // Контент с pinch-to-zoom
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .onGloballyPositioned { coordinates ->
-                    containerWidth = coordinates.size.width.toFloat()
-                    containerHeight = coordinates.size.height.toFloat()
-                }
                 .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -736,26 +719,39 @@ private fun FormulaArea(
                     }
                 )
             } else {
-                // Горизонтальный скролл для длинных формул
-                val scrollState = rememberScrollState()
-
+                // Pinch-to-zoom с панорамированием
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .horizontalScroll(scrollState),
+                        .clipToBounds()
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                // Масштабирование (от 30% до 300%)
+                                scale = (scale * zoom).coerceIn(0.3f, 3f)
+                                // Панорамирование
+                                offsetX += pan.x
+                                offsetY += pan.y
+                            }
+                        }
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onDoubleTap = {
+                                    // Двойной тап — сброс масштаба и позиции
+                                    scale = 1f
+                                    offsetX = 0f
+                                    offsetY = 0f
+                                }
+                            )
+                        },
                     contentAlignment = Alignment.Center
                 ) {
-                    // Применяем автомасштабирование
                     Box(
                         modifier = Modifier
-                            .onGloballyPositioned { coordinates ->
-                                contentWidth = coordinates.size.width.toFloat()
-                                contentHeight = coordinates.size.height.toFloat()
-                            }
                             .graphicsLayer {
-                                scaleX = animatedScale
-                                scaleY = animatedScale
-                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin.Center
+                                scaleX = scale
+                                scaleY = scale
+                                translationX = offsetX
+                                translationY = offsetY
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -777,10 +773,10 @@ private fun FormulaArea(
             }
         }
 
-        // Индикатор масштаба (показываем если формула уменьшена)
-        if (animatedScale < 0.95f) {
+        // Индикатор масштаба (показываем если масштаб изменён)
+        if (scale < 0.95f || scale > 1.05f) {
             Text(
-                text = "${(animatedScale * 100).toInt()}%",
+                text = "${(scale * 100).toInt()}%",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 modifier = Modifier
